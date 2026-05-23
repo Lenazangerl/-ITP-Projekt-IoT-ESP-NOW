@@ -6,7 +6,6 @@
 // ---------------- OLED ----------------
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
-
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
 // ---------------- Ultraschall ----------------
@@ -25,8 +24,11 @@ int buzzer = 13;
 // ---------------- DHT11 ----------------
 #define DHTPIN 33
 #define DHTTYPE DHT11
-
 DHT dht(DHTPIN, DHTTYPE);
+
+// ---------------- NEW SENSORS ----------------
+int tiltPin = 32;
+int lightPin = 34;
 
 // ---------------- DISTANZ ----------------
 float measureDistance() {
@@ -69,6 +71,8 @@ void setup() {
   pinMode(pirPin, INPUT);
   pinMode(buzzer, OUTPUT);
 
+  pinMode(tiltPin, INPUT);
+
   Wire.begin(21, 22);
 
   if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
@@ -84,20 +88,17 @@ void setup() {
   ledcAttach(greenPin, 5000, 8);
   ledcAttach(bluePin, 5000, 8);
 
-  dht.begin();   // ⭐ DHT START
+  dht.begin();
 }
 
 // ---------------- LOOP ----------------
 void loop() {
 
   // -------- PIR --------
-  int state = digitalRead(pirPin);
+  int pir = digitalRead(pirPin);
 
-  if (state == HIGH) {
-    tone(buzzer, 1200);
-  } else {
-    noTone(buzzer);
-  }
+  if (pir == HIGH) tone(buzzer, 1200);
+  else noTone(buzzer);
 
   // -------- DISTANZ --------
   float distance = measureDistance();
@@ -106,50 +107,55 @@ void loop() {
   float h = dht.readHumidity();
   float t = dht.readTemperature();
 
-  // -------- SERIAL DEBUG --------
-  Serial.print("PIR: ");
-  Serial.print(state);
-  Serial.print(" | Dist: ");
-  Serial.print(distance);
-  Serial.print(" | Temp: ");
-  Serial.print(t);
-  Serial.print(" | Hum: ");
-  Serial.println(h);
+  // -------- TILT (UMGEDREHT) --------
+  int tilt = digitalRead(tiltPin);
 
-  // -------- OLED --------
-  display.clearDisplay();
+  // -------- LIGHT (4095 = dunkel) --------
+  int light = analogRead(lightPin);
 
-  display.setCursor(0, 0);
-  display.print("PIR: ");
-  display.println(state);
-
-  display.setCursor(0, 15);
-  display.print("Dist: ");
-  display.print(distance);
-  display.println(" cm");
-
-  display.setCursor(0, 30);
-  display.print("Temp: ");
-  display.print(t);
-  display.println(" C");
-
-  display.setCursor(0, 45);
-  display.print("Hum: ");
-  display.print(h);
-  display.println(" %");
-
-  display.display();
+  bool isDark = (light > 3000);
 
   // -------- RGB --------
-  if (distance > 0 && distance < 10) {
-    setColor(255, 0, 0);
-  } 
-  else if (distance >= 10 && distance <= 25) {
-    setColor(255, 120, 0);
-  } 
-  else {
-    setColor(0, 255, 0);
-  }
+  if (distance > 0 && distance < 10) setColor(255, 0, 0);
+  else if (distance < 25) setColor(255, 120, 0);
+  else setColor(0, 255, 0);
+
+
+  // -------- OLED --------
+ display.clearDisplay();
+
+// -------- Bewegung --------
+display.setCursor(0, 0);
+display.print("Bewegung: ");
+if (pir == 1) display.println(" Ja");
+else display.println(" Nein");
+
+// -------- Distanz --------
+display.setCursor(0, 12);
+display.print("Distanz: ");
+display.print(distance);
+display.println(" cm");
+
+// -------- Temperatur --------
+display.setCursor(0, 24);
+display.print("Temperatur: ");
+display.print(t);
+display.println(" C");
+
+// -------- Luftfeuchtigkeit --------
+display.setCursor(0, 36);
+display.print("Feuchte: ");
+display.print(h);
+display.println(" %");
+
+// -------- Light --------
+display.setCursor(0, 48);
+display.print("Licht: ");
+
+if (isDark) display.println("DUNKEL");
+else display.println("HELL");
+
+display.display();
 
   delay(50);
 }
