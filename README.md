@@ -1,25 +1,32 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include "DHT.h"
 
-// OLED
+// ---------------- OLED ----------------
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
-// Ultraschall
+// ---------------- Ultraschall ----------------
 #define TRIG 5
 #define ECHO 18
 
-// RGB Pins
+// ---------------- RGB ----------------
 int redPin = 25;
 int greenPin = 26;
 int bluePin = 27;
 
-// PIR + Buzzer
+// ---------------- PIR + Buzzer ----------------
 int pirPin = 2;
 int buzzer = 13;
+
+// ---------------- DHT11 ----------------
+#define DHTPIN 33
+#define DHTTYPE DHT11
+
+DHT dht(DHTPIN, DHTTYPE);
 
 // ---------------- DISTANZ ----------------
 float measureDistance() {
@@ -76,6 +83,8 @@ void setup() {
   ledcAttach(redPin, 5000, 8);
   ledcAttach(greenPin, 5000, 8);
   ledcAttach(bluePin, 5000, 8);
+
+  dht.begin();   // ⭐ DHT START
 }
 
 // ---------------- LOOP ----------------
@@ -83,7 +92,6 @@ void loop() {
 
   // -------- PIR --------
   int state = digitalRead(pirPin);
-  Serial.println(state);
 
   if (state == HIGH) {
     tone(buzzer, 1200);
@@ -94,16 +102,41 @@ void loop() {
   // -------- DISTANZ --------
   float distance = measureDistance();
 
-  Serial.println(distance);
+  // -------- DHT11 --------
+  float h = dht.readHumidity();
+  float t = dht.readTemperature();
+
+  // -------- SERIAL DEBUG --------
+  Serial.print("PIR: ");
+  Serial.print(state);
+  Serial.print(" | Dist: ");
+  Serial.print(distance);
+  Serial.print(" | Temp: ");
+  Serial.print(t);
+  Serial.print(" | Hum: ");
+  Serial.println(h);
 
   // -------- OLED --------
   display.clearDisplay();
-  display.setCursor(0, 0);
-  display.print("Distanz:");
 
-  display.setCursor(0, 20);
+  display.setCursor(0, 0);
+  display.print("PIR: ");
+  display.println(state);
+
+  display.setCursor(0, 15);
+  display.print("Dist: ");
   display.print(distance);
-  display.print(" cm");
+  display.println(" cm");
+
+  display.setCursor(0, 30);
+  display.print("Temp: ");
+  display.print(t);
+  display.println(" C");
+
+  display.setCursor(0, 45);
+  display.print("Hum: ");
+  display.print(h);
+  display.println(" %");
 
   display.display();
 
@@ -118,5 +151,5 @@ void loop() {
     setColor(0, 255, 0);
   }
 
-  delay(20); // wichtig: nur kleine Stabilisierung
+  delay(50);
 }
