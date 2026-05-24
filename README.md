@@ -77,6 +77,7 @@ PIR Bewegungssensor + Ultraschallsensor + DHT11 + LDR + Tilt B15 + OLED Display 
 
 ---
 
+```cpp
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -185,6 +186,7 @@ void loop() {
   // -------- DHT11 --------
   float h = dht.readHumidity();
   float t = dht.readTemperature();
+  t = round(t * 10) / 10.0;
 
   // -------- TILT (UMGEDREHT) --------
   int tilt = digitalRead(tiltPin);
@@ -200,39 +202,33 @@ void loop() {
   else setColor(0, 255, 0);
 
 
-  // -------- OLED --------
- display.clearDisplay();
+// -------- OLED --------
+display.clearDisplay();
 
-// -------- Bewegung --------
+// Line 1: Bewegung + Tilt
 display.setCursor(0, 0);
-display.print("Bewegung: ");
-if (pir == 1) display.println(" Ja");
-else display.println(" Nein");
+display.print("Move:");
+display.print(pir ? "Yes " : "No ");
 
-// -------- Distanz --------
+display.print("   Incl:");
+display.println(tilt ? "Yes" : "No");
+
+// Line 2: Distanz + Temperatur
 display.setCursor(0, 12);
-display.print("Distanz: ");
+display.print("Dist:");
 display.print(distance);
-display.println(" cm");
-
-// -------- Temperatur --------
-display.setCursor(0, 24);
-display.print("Temperatur: ");
+display.print(" Temp:");
 display.print(t);
-display.println(" C");
+display.println("C");
 
-// -------- Luftfeuchtigkeit --------
-display.setCursor(0, 36);
-display.print("Feuchte: ");
+// Line 3: Feuchte + Licht
+display.setCursor(0, 24);
+display.print("Hum:");
 display.print(h);
-display.println(" %");
+display.print("% Light:");
 
-// -------- Light --------
-display.setCursor(0, 48);
-display.print("Licht: ");
-
-if (isDark) display.println("DUNKEL");
-else display.println("HELL");
+if (isDark) display.println("Dark");
+else display.println("Bright");
 
 display.display();
 
