@@ -122,26 +122,33 @@ void loop() {
   // -------- OLED --------
   display.clearDisplay();
 
-  // Line 1: Bewegung + Tilt
+  // Line 1: Move + Dist
   display.setCursor(0, 0);
   display.print("Move:");
   display.print(pir ? "Yes " : "No ");
 
-  display.print("   Incl:");
-  display.println(tilt ? "Yes" : "No");
-
-  // Line 2: Distanz + Temperatur
-  display.setCursor(0, 12);
   display.print("Dist:");
   display.print(distance);
-  display.print(" Temp:");
-  display.println(t);
+  display.println("cm");
 
-  // Line 3: Feuchte + Licht
+  // Line 2: Incl + Temp
+  display.setCursor(0, 12);
+  display.print("Incl:");
+  display.print(tilt ? "Yes " : "No ");
+
+  display.print("Temp:");
+  display.print(t);
+  display.println("C");
+
+  // Line 3: Hum
   display.setCursor(0, 24);
   display.print("Hum:");
   display.print(h);
-  display.print("% Light:");
+  display.println("%");
+
+  // Line 4: Light
+  display.setCursor(0, 36);
+  display.print("Light:");
 
   if (isDark) display.println("Dark");
   else display.println("Bright");
