@@ -30,6 +30,34 @@ DHT dht(DHTPIN, DHTTYPE);
 int tiltPin = 32;
 int lightPin = 34;
 
+// ---------------- SLEEP / MITTELWERT ----------------
+const unsigned long MEASURE_TIME = 30000;
+const unsigned long SLEEP_TIME = 30000;
+
+bool sleepMode = false;
+unsigned long phaseStart = 0;
+
+float sumDistance = 0;
+float sumTemp = 0;
+float sumHum = 0;
+long sumLight = 0;
+
+long distanceSamples = 0;
+long tempSamples = 0;
+long humSamples = 0;
+long lightSamples = 0;
+long totalSamples = 0;
+
+long pirHighSamples = 0;
+long tiltHighSamples = 0;
+
+float avgDistance = 0;
+float avgTemp = 0;
+float avgHum = 0;
+int avgLight = 0;
+int avgPir = LOW;
+int avgTilt = LOW;
+
 // ---------------- DISTANZ ----------------
 float measureDistance() {
 
@@ -58,6 +86,112 @@ void setColor(int r, int g, int b) {
   ledcWrite(redPin, r);
   ledcWrite(greenPin, g);
   ledcWrite(bluePin, b);
+}
+
+// ---------------- MITTELWERTE ----------------
+void resetAverages() {
+  sumDistance = 0;
+  sumTemp = 0;
+  sumHum = 0;
+  sumLight = 0;
+
+  distanceSamples = 0;
+  tempSamples = 0;
+  humSamples = 0;
+  lightSamples = 0;
+  totalSamples = 0;
+
+  pirHighSamples = 0;
+  tiltHighSamples = 0;
+}
+
+void addAverages(int pir, float distance, int tilt, float t, float h, int light) {
+  totalSamples++;
+
+  if (pir == HIGH) pirHighSamples++;
+  if (tilt == HIGH) tiltHighSamples++;
+
+  if (distance > 0) {
+    sumDistance += distance;
+    distanceSamples++;
+  }
+
+  if (!isnan(t)) {
+    sumTemp += t;
+    tempSamples++;
+  }
+
+  if (!isnan(h)) {
+    sumHum += h;
+    humSamples++;
+  }
+
+  sumLight += light;
+  lightSamples++;
+}
+
+void finalizeAverages() {
+  avgDistance = distanceSamples > 0 ? sumDistance / distanceSamples : 0;
+  avgTemp = tempSamples > 0 ? sumTemp / tempSamples : 0;
+  avgHum = humSamples > 0 ? sumHum / humSamples : 0;
+  avgLight = lightSamples > 0 ? sumLight / lightSamples : 0;
+
+  avgPir = pirHighSamples > totalSamples / 2 ? HIGH : LOW;
+  avgTilt = tiltHighSamples > totalSamples / 2 ? HIGH : LOW;
+}
+
+int remainingSeconds(unsigned long phaseTime) {
+  unsigned long elapsed = millis() - phaseStart;
+
+  if (elapsed >= phaseTime) return 1;
+
+  return (phaseTime - elapsed + 999) / 1000;
+}
+
+void sensorsOffForSleep() {
+  noTone(buzzer);
+  digitalWrite(TRIG, LOW);
+  setColor(0, 0, 0);
+}
+
+// ---------------- OLED ----------------
+void showOLED(int pir, float distance, int tilt, float t, float h, bool isDark, const char* modeText, int secondsLeft) {
+  display.clearDisplay();
+
+  display.setCursor(0, 0);
+  display.print("Move:");
+  display.print(pir ? "Yes " : "No ");
+
+  display.print("Dist:");
+  display.print(distance);
+  display.println("cm");
+
+  display.setCursor(0, 12);
+  display.print("Incl:");
+  display.print(tilt ? "Yes " : "No ");
+
+  display.print("Temp:");
+  display.print(t);
+  display.println("C");
+
+  display.setCursor(0, 24);
+  display.print("Hum:");
+  display.print(h);
+  display.println("%");
+
+  display.setCursor(0, 36);
+  display.print("Light:");
+
+  if (isDark) display.println("Dark");
+  else display.println("Bright");
+
+  display.setCursor(0, 50);
+  display.print(modeText);
+  display.print(": ");
+  display.print(secondsLeft);
+  display.println("sek");
+
+  display.display();
 }
 
 // ---------------- SETUP ----------------
@@ -89,10 +223,38 @@ void setup() {
   ledcAttach(bluePin, 5000, 8);
 
   dht.begin();
+
+  resetAverages();
+  phaseStart = millis();
 }
 
 // ---------------- LOOP ----------------
 void loop() {
+
+  unsigned long now = millis();
+
+  if (!sleepMode && now - phaseStart >= MEASURE_TIME) {
+    finalizeAverages();
+    sleepMode = true;
+    phaseStart = now;
+    sensorsOffForSleep();
+  }
+
+  if (sleepMode && now - phaseStart >= SLEEP_TIME) {
+    sleepMode = false;
+    phaseStart = now;
+    resetAverages();
+  }
+
+  if (sleepMode) {
+    bool avgIsDark = avgLight > 3000;
+    int secondsLeft = remainingSeconds(SLEEP_TIME);
+
+    showOLED(avgPir, avgDistance, avgTilt, avgTemp, avgHum, avgIsDark, "Sleep", secondsLeft);
+
+    delay(100);
+    return;
+  }
 
   // -------- PIR --------
   int pir = digitalRead(pirPin);
@@ -106,6 +268,7 @@ void loop() {
   // -------- DHT11 --------
   float h = dht.readHumidity();
   float t = dht.readTemperature();
+
   // -------- TILT (UMGEDREHT) --------
   int tilt = !digitalRead(tiltPin);
 
@@ -114,46 +277,17 @@ void loop() {
 
   bool isDark = (light > 3000);
 
+  addAverages(pir, distance, tilt, t, h, light);
+
   // -------- RGB --------
   if (distance > 0 && distance < 10) setColor(255, 0, 0);
   else if (distance < 25) setColor(255, 120, 0);
   else setColor(0, 255, 0);
 
+  int secondsLeft = remainingSeconds(MEASURE_TIME);
+
   // -------- OLED --------
-  display.clearDisplay();
-
-  // Line 1: Move + Dist
-  display.setCursor(0, 0);
-  display.print("Move:");
-  display.print(pir ? "Yes " : "No ");
-
-  display.print("Dist:");
-  display.print(distance);
-  display.println("cm");
-
-  // Line 2: Incl + Temp
-  display.setCursor(0, 12);
-  display.print("Incl:");
-  display.print(tilt ? "Yes " : "No ");
-
-  display.print("Temp:");
-  display.print(t);
-  display.println("C");
-
-  // Line 3: Hum
-  display.setCursor(0, 24);
-  display.print("Hum:");
-  display.print(h);
-  display.println("%");
-
-  // Line 4: Light
-  display.setCursor(0, 36);
-  display.print("Light:");
-
-  if (isDark) display.println("Dark");
-  else display.println("Bright");
-
-  display.display();
+  showOLED(pir, distance, tilt, t, h, isDark, "Awake", secondsLeft);
 
   delay(50);
 }
