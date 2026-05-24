@@ -8,10 +8,11 @@
 
 // ---------------- ESP-NOW ----------------
 #define ESPNOW_CHANNEL 1
+
 uint8_t receiverAddress[] = {0x00, 0x70, 0x07, 0x25, 0x77, 0x4C};
 
 #define PACKET_MAGIC 0xAABBCCDD
-#define PACKET_VERSION 1
+#define PACKET_VERSION 2
 
 typedef struct __attribute__((packed)) {
   uint32_t magic;
@@ -27,6 +28,10 @@ typedef struct __attribute__((packed)) {
   uint8_t motion;
   uint8_t tilt;
   uint8_t dark;
+
+  uint8_t sleeping;
+  uint8_t historySample;
+  uint16_t secondsLeft;
 } SensorPacket;
 
 uint32_t packetSeq = 0;
@@ -58,16 +63,16 @@ DHT dht(DHTPIN, DHTTYPE);
 int tiltPin = 32;
 int lightPin = 34;
 
-// Optional: nur verwenden, wenn Sensor-VCC ueber MOSFET/GPIO geschaltet ist.
-int sensorPowerPin = -1;
-
-// ---------------- SLEEP / MITTELWERT ----------------
+// ---------------- SLEEP / SENDEN ----------------
 const unsigned long MEASURE_TIME = 30000;
 const unsigned long SLEEP_TIME = 30000;
+const unsigned long SEND_INTERVAL = 1000;
 
 bool sleepMode = false;
 unsigned long phaseStart = 0;
+unsigned long lastSendMs = 0;
 
+// ---------------- MITTELWERTE ----------------
 float sumDistance = 0;
 float sumTemp = 0;
 float sumHum = 0;
@@ -88,10 +93,6 @@ float avgHum = 0;
 int avgLight = 0;
 int avgPir = LOW;
 int avgTilt = LOW;
-
-void setSensorPower(bool on) {
-  if (sensorPowerPin >= 0) digitalWrite(sensorPowerPin, on ? HIGH : LOW);
-}
 
 // ---------------- DISTANZ ----------------
 float measureDistance() {
@@ -146,7 +147,8 @@ void setupEspNow() {
   }
 }
 
-void sendAveragePacket() {
+void sendSensorPacket(bool sleeping, bool historySample, int secondsLeft,
+                      int pir, float distance, int tilt, float t, float h, int light) {
   SensorPacket packet;
 
   packet.magic = PACKET_MAGIC;
@@ -154,14 +156,18 @@ void sendAveragePacket() {
   packet.seq = packetSeq++;
   packet.uptimeMs = millis();
 
-  packet.distanceCm = avgDistance;
-  packet.temperatureC = avgTemp;
-  packet.humidityPct = avgHum;
-  packet.lightRaw = avgLight;
+  packet.distanceCm = distance;
+  packet.temperatureC = t;
+  packet.humidityPct = h;
+  packet.lightRaw = light;
 
-  packet.motion = avgPir == HIGH ? 1 : 0;
-  packet.tilt = avgTilt == HIGH ? 1 : 0;
-  packet.dark = avgLight > 3000 ? 1 : 0;
+  packet.motion = pir ? 1 : 0;
+  packet.tilt = tilt ? 1 : 0;
+  packet.dark = light > 3000 ? 1 : 0;
+
+  packet.sleeping = sleeping ? 1 : 0;
+  packet.historySample = historySample ? 1 : 0;
+  packet.secondsLeft = secondsLeft;
 
   esp_now_send(receiverAddress, (uint8_t *)&packet, sizeof(packet));
 }
@@ -220,7 +226,9 @@ void finalizeAverages() {
 
 int remainingSeconds(unsigned long phaseTime) {
   unsigned long elapsed = millis() - phaseStart;
+
   if (elapsed >= phaseTime) return 1;
+
   return (phaseTime - elapsed + 999) / 1000;
 }
 
@@ -228,13 +236,6 @@ void sensorsOffForSleep() {
   noTone(buzzer);
   digitalWrite(TRIG, LOW);
   setColor(0, 0, 0);
-  setSensorPower(false);
-}
-
-void sensorsOnForAwake() {
-  setSensorPower(true);
-  if (sensorPowerPin >= 0) delay(1000);
-  dht.begin();
 }
 
 // ---------------- OLED ----------------
@@ -290,12 +291,6 @@ void setup() {
   pinMode(tiltPin, INPUT);
   pinMode(lightPin, INPUT);
 
-  if (sensorPowerPin >= 0) {
-    pinMode(sensorPowerPin, OUTPUT);
-    setSensorPower(true);
-    delay(1000);
-  }
-
   Wire.begin(21, 22);
 
   if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
@@ -324,18 +319,19 @@ void loop() {
 
   if (!sleepMode && now - phaseStart >= MEASURE_TIME) {
     finalizeAverages();
-    sendAveragePacket();
 
     sleepMode = true;
     phaseStart = now;
     sensorsOffForSleep();
+
+    sendSensorPacket(true, true, 30, avgPir, avgDistance, avgTilt, avgTemp, avgHum, avgLight);
+    lastSendMs = now;
   }
 
   if (sleepMode && now - phaseStart >= SLEEP_TIME) {
     sleepMode = false;
     phaseStart = now;
     resetAverages();
-    sensorsOnForAwake();
   }
 
   if (sleepMode) {
@@ -343,6 +339,11 @@ void loop() {
     int secondsLeft = remainingSeconds(SLEEP_TIME);
 
     showOLED(avgPir, avgDistance, avgTilt, avgTemp, avgHum, avgIsDark, "Sleep", secondsLeft);
+
+    if (now - lastSendMs >= SEND_INTERVAL) {
+      sendSensorPacket(true, false, secondsLeft, avgPir, avgDistance, avgTilt, avgTemp, avgHum, avgLight);
+      lastSendMs = now;
+    }
 
     delay(100);
     return;
@@ -373,6 +374,11 @@ void loop() {
   int secondsLeft = remainingSeconds(MEASURE_TIME);
 
   showOLED(pir, distance, tilt, t, h, isDark, "Awake", secondsLeft);
+
+  if (now - lastSendMs >= SEND_INTERVAL) {
+    sendSensorPacket(false, false, secondsLeft, pir, distance, tilt, t, h, light);
+    lastSendMs = now;
+  }
 
   delay(50);
 }
