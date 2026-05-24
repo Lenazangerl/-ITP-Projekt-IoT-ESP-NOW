@@ -13,7 +13,7 @@ WebServer server(80);
 
 // ---------------- ESP-NOW PACKET ----------------
 #define PACKET_MAGIC 0xAABBCCDD
-#define PACKET_VERSION 1
+#define PACKET_VERSION 2
 
 typedef struct __attribute__((packed)) {
   uint32_t magic;
@@ -29,6 +29,10 @@ typedef struct __attribute__((packed)) {
   uint8_t motion;
   uint8_t tilt;
   uint8_t dark;
+
+  uint8_t sleeping;
+  uint8_t historySample;
+  uint16_t secondsLeft;
 } SensorPacket;
 
 // ---------------- CURRENT DATA ----------------
@@ -85,6 +89,8 @@ main{max-width:1000px;margin:auto;padding:18px}
 select{padding:8px;border:1px solid #ccd5df;border-radius:6px;background:white}
 canvas{width:100%;height:320px;border:1px solid #e1e7ee;border-radius:6px}
 .small{font-size:13px;color:#607080;margin-top:8px}
+.awake{color:#15803d}
+.sleep{color:#2563eb}
 </style>
 </head>
 <body>
@@ -93,6 +99,8 @@ canvas{width:100%;height:320px;border:1px solid #e1e7ee;border-radius:6px}
 </header>
 <main>
   <div class="grid">
+    <div class="card"><div class="label">Status</div><div class="value" id="mode">-</div></div>
+    <div class="card"><div class="label">Countdown</div><div class="value" id="countdown">-</div></div>
     <div class="card"><div class="label">Bewegung</div><div class="value" id="motion">-</div></div>
     <div class="card"><div class="label">Distanz</div><div class="value" id="distance">-</div></div>
     <div class="card"><div class="label">Temperatur</div><div class="value" id="temperature">-</div></div>
@@ -136,6 +144,11 @@ async function loadCurrent(){
     return;
   }
 
+  const modeEl = document.getElementById("mode");
+  modeEl.textContent = d.sleeping ? "Sleep" : "Awake";
+  modeEl.className = "value " + (d.sleeping ? "sleep" : "awake");
+
+  document.getElementById("countdown").textContent = d.secondsLeft + " s";
   document.getElementById("motion").textContent = d.motion ? "Ja" : "Nein";
   document.getElementById("distance").textContent = d.distanceCm.toFixed(1) + " cm";
   document.getElementById("temperature").textContent = d.temperatureC.toFixed(1) + " C";
@@ -144,7 +157,10 @@ async function loadCurrent(){
   document.getElementById("light").textContent = d.dark ? "Dunkel" : "Hell";
 
   document.getElementById("status").textContent =
-    "Letztes Paket vor " + d.ageSec + " s, Paket #" + d.seq;
+    (d.sleeping ? "Sender schlaeft" : "Sender ist wach") +
+    " | Wechsel in " + d.secondsLeft +
+    " s | Letztes Paket vor " + d.ageSec +
+    " s | Paket #" + d.seq;
 }
 
 async function loadHistory(){
@@ -175,7 +191,7 @@ function drawChart(points, metric, title){
 
   if(vals.length < 1){
     ctx.fillStyle = "#607080";
-    ctx.fillText("Noch keine historischen Daten.", padL, 155);
+    ctx.fillText("Noch keine historischen Durchschnittswerte.", padL, 155);
     return;
   }
 
@@ -248,7 +264,7 @@ document.getElementById("metric").addEventListener("change", loadHistory);
 document.getElementById("range").addEventListener("change", loadHistory);
 
 refresh();
-setInterval(refresh, 5000);
+setInterval(refresh, 1000);
 </script>
 </body>
 </html>
@@ -257,7 +273,6 @@ setInterval(refresh, 5000);
 // ---------------- NETWORK SETUP ----------------
 void setupNetwork() {
   WiFi.mode(WIFI_AP_STA);
-
   WiFi.softAP(AP_SSID, AP_PASS, ESPNOW_CHANNEL);
 
   Serial.print("AP IP: ");
@@ -265,11 +280,6 @@ void setupNetwork() {
 
   Serial.print("Empfaenger MAC: ");
   Serial.println(WiFi.macAddress());
-
-  // Spaeter fuer WiFiManager:
-  // WiFiManager wm;
-  // wm.autoConnect("ESP32-Setup");
-  // Danach muss der Sender denselben WLAN-Kanal verwenden wie WiFi.channel().
 }
 
 // ---------------- HISTORY HELPERS ----------------
@@ -347,7 +357,19 @@ void processPendingPacket() {
   hasCurrentPacket = true;
   lastReceiveMs = millis();
 
-  addToHistory(packet);
+  if (packet.historySample) {
+    addToHistory(packet);
+  }
+
+  Serial.print("Paket #");
+  Serial.print(packet.seq);
+  Serial.print(packet.sleeping ? " Sleep " : " Awake ");
+  Serial.print("Rest: ");
+  Serial.print(packet.secondsLeft);
+  Serial.print("s Temp: ");
+  Serial.print(packet.temperatureC);
+  Serial.print(" Dist: ");
+  Serial.println(packet.distanceCm);
 }
 
 // ---------------- API ----------------
@@ -369,6 +391,8 @@ void handleCurrent() {
   json += "\"online\":true,";
   json += "\"seq\":" + String(currentPacket.seq) + ",";
   json += "\"ageSec\":" + String((millis() - lastReceiveMs) / 1000) + ",";
+  json += "\"sleeping\":" + boolText(currentPacket.sleeping) + ",";
+  json += "\"secondsLeft\":" + String(currentPacket.secondsLeft) + ",";
   json += "\"distanceCm\":" + String(currentPacket.distanceCm, 1) + ",";
   json += "\"temperatureC\":" + String(currentPacket.temperatureC, 1) + ",";
   json += "\"humidityPct\":" + String(currentPacket.humidityPct, 1) + ",";
