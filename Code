@@ -106,9 +106,10 @@ void loop() {
   // -------- DHT11 --------
   float h = dht.readHumidity();
   float t = dht.readTemperature();
+  t = round(t * 10) / 10.0;
 
   // -------- TILT (UMGEDREHT) --------
-  int tilt = digitalRead(tiltPin);
+  int tilt = !digitalRead(tiltPin);
 
   // -------- LIGHT (4095 = dunkel) --------
   int light = analogRead(lightPin);
@@ -120,42 +121,35 @@ void loop() {
   else if (distance < 25) setColor(255, 120, 0);
   else setColor(0, 255, 0);
 
-
   // -------- OLED --------
- display.clearDisplay();
+  display.clearDisplay();
 
-// -------- Bewegung --------
-display.setCursor(0, 0);
-display.print("Bewegung: ");
-if (pir == 1) display.println(" Ja");
-else display.println(" Nein");
+  // Line 1: Bewegung + Tilt
+  display.setCursor(0, 0);
+  display.print("Move:");
+  display.print(pir ? "Yes " : "No ");
 
-// -------- Distanz --------
-display.setCursor(0, 12);
-display.print("Distanz: ");
-display.print(distance);
-display.println(" cm");
+  display.print("   Incl:");
+  display.println(tilt ? "Yes" : "No");
 
-// -------- Temperatur --------
-display.setCursor(0, 24);
-display.print("Temperatur: ");
-display.print(t);
-display.println(" C");
+  // Line 2: Distanz + Temperatur
+  display.setCursor(0, 12);
+  display.print("Dist:");
+  display.print(distance);
+  display.print(" Temp:");
+  display.print(t);
+  display.println("C");
 
-// -------- Luftfeuchtigkeit --------
-display.setCursor(0, 36);
-display.print("Feuchte: ");
-display.print(h);
-display.println(" %");
+  // Line 3: Feuchte + Licht
+  display.setCursor(0, 24);
+  display.print("Hum:");
+  display.print(h);
+  display.print("% Light:");
 
-// -------- Light --------
-display.setCursor(0, 48);
-display.print("Licht: ");
+  if (isDark) display.println("Dark");
+  else display.println("Bright");
 
-if (isDark) display.println("DUNKEL");
-else display.println("HELL");
-
-display.display();
+  display.display();
 
   delay(50);
 }
