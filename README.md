@@ -7,6 +7,8 @@
 ## Fach
 Systemtechnik (SYT)
 
+---
+
 ## Gruppe
 - Lena Zangerl
 - Damjan Panevski
@@ -17,48 +19,61 @@ Systemtechnik (SYT)
 
 Ziel dieses Projekts war es, zwei ESP32-Mikrocontroller zu einer IoT-Station zu verbinden.
 
-Ein ESP32 (Sender) misst die Umgebungshelligkeit sowie die Neigung und sendet diese Daten über ESP-NOW an einen zweiten ESP32 (Receiver).  
-Der Receiver stellt die Messwerte über ein Webinterface dar.
+Ein ESP32 (Sender) misst verschiedene Umweltdaten und sendet diese über ESP-NOW an einen zweiten ESP32 (Receiver).  
+Der Receiver verarbeitet die Daten und stellt sie über ein Webinterface im Browser dar.
 
-Umgesetzt wurden die Varianten:
-GK:
-- **Wi-Fi Manager** (automatische WLAN-Konfiguration)
-- **Sleep-Mode** (Energieeinsparung zwischen Messungen)
-- **LDR (Helligkeitssensor):** Erkennt, wie hell oder dunkel es ist.
-- **Tilt B15 Sensor:** Erkennt, ob das Gerät gekippt oder bewegt wurde.  
-Ek:
-- **PIR Bewegungssensor:** Erkennt Bewegungen im Raum und löst z. B. einen Alarm aus.  
-- **Ultraschallsensor:** Misst die Entfernung zu einem Objekt.  
-- **DHT11 Sensor:** Misst Temperatur und Luftfeuchtigkeit.   
-- **RGB LED:** Zeigt Zustände mit Farben (z. B. grün, orange, rot).  
-- **Buzzer:** Gibt einen Ton aus bei Bewegung oder Alarm.  
-- **OLED Display:** Zeigt alle Messwerte übersichtlich an.
+---
 
+## Umgesetzte Funktionen
+
+### GK (Grundkompetenzen)
+
+- **WiFi-Manager:** Automatische Verbindung mit einem WLAN ohne festen Code  
+- **Sleep-Mode:** Energiesparmodus zwischen den Messungen  
+- **LDR (Helligkeitssensor):** Erkennt die Lichtstärke (hell/dunkel)  
+- **Tilt B15 Sensor:** Erkennt Neigung oder Bewegung des Geräts  
+
+---
+
+### EK (Erweiterte Kompetenzen)
+
+- **PIR Bewegungssensor:** Erkennt Bewegungen im Raum und löst einen Alarm aus  
+- **Ultraschallsensor:** Misst die Entfernung zu Objekten  
+- **DHT11 Sensor:** Misst Temperatur und Luftfeuchtigkeit  
+- **RGB LED:** Zeigt Zustände durch Farben (z. B. grün, orange, rot)  
+- **Buzzer:** Gibt akustische Signale bei Ereignissen aus  
+- **OLED Display:** Zeigt alle Messwerte übersichtlich an  
+
+---
 
 ## Systemarchitektur
 
-Die Sensoren erfassen verschiedene Daten (Bewegung, Temperatur, Luftfeuchtigkeit, Licht, Abstand, Display, RGB und Neigung).
+Die Sensoren erfassen verschiedene Umweltdaten (Bewegung, Temperatur, Luftfeuchtigkeit, Licht, Abstand und Neigung).
 
-PIR Bewegungssensor + Ultraschallsensor + DHT11 + LDR + Tilt B15 + OLED Display + LDR + RGB LED  
+PIR Bewegungssensor + Ultraschallsensor + DHT11 + LDR + Tilt B15 + OLED Display + RGB LED  
 → ESP32 Sender (Sensordaten erfassen & verarbeiten)  
 → ESP-NOW (drahtlose Kommunikation ohne Router)  
 → ESP32 Receiver (Daten empfangen & weiterverarbeiten)  
 → Webserver (Anzeige der Daten im Browser in Echtzeit)
 
-| Komponente              | Anzahl | Beschreibung |
-|------------------------|:------:|--------------|
-| ESP32 Dev Board        | 2      | Hauptcontroller |
-| DHT11 Sensor           | 1      | Temperatur- & Luftfeuchtigkeitsmessung |
-| HC-SR04 Ultraschallsensor | 1   | Abstandsmessung |
-| PIR Bewegungssensor    | 1      | Bewegungserkennung |
-| LDR (Helligkeitssensor)| 1      | Lichtmessung (analog) |
-| Tilt B15 Sensor        | 1      | Neigungserkennung (digital) |
-| OLED Display 128x64    | 1      | Anzeige der Messwerte |
-| RGB LED                | 1      | Statusanzeige (Farben) |
-| Buzzer                 | 1      | Akustisches Signal |
-| Breadboard             | 1      | Steckbrett für Aufbau |
-| Jumper Kabel           | mehrere| Verbindungen zwischen Bauteilen |
-| USB Kabel              | 2      | Strom |
+---
+
+## Verwendete Komponenten
+
+| Komponente                 | Anzahl | Beschreibung |
+|---------------------------|:------:|--------------|
+| ESP32 Dev Board           | 2      | Hauptcontroller |
+| DHT11 Sensor              | 1      | Temperatur- & Luftfeuchtigkeitsmessung |
+| HC-SR04 Ultraschallsensor | 1      | Abstandsmessung |
+| PIR Bewegungssensor       | 1      | Bewegungserkennung |
+| LDR (Helligkeitssensor)   | 1      | Lichtmessung (analog) |
+| Tilt B15 Sensor           | 1      | Neigungserkennung (digital) |
+| OLED Display 128x64       | 1      | Anzeige der Messwerte |
+| RGB LED                   | 1      | Statusanzeige (Farben) |
+| Buzzer                    | 1      | Akustisches Signal |
+| Breadboard                | 1      | Steckbrett für Aufbau |
+| Jumper Kabel              | mehrere| Verbindungen zwischen Bauteilen |
+| USB Kabel                 | 2      | Stromversorgung |
 
 ---
 
