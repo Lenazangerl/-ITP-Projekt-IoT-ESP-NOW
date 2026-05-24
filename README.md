@@ -1,3 +1,67 @@
+# ESP32 IoT-Station mit ESP-NOW
+
+**SYT ITP Projekt – ESP32 IoT Station mit Webserver, WiFi-Manager und Sleep-Mode**
+
+---
+
+## Fach
+Systemtechnik (SYT)
+
+## Gruppe
+- Lena Zangerl
+- Damjan Panevski
+
+---
+
+## Projektziel
+
+Ziel dieses Projekts war es, zwei ESP32-Mikrocontroller zu einer IoT-Station zu verbinden.
+
+Ein ESP32 (Sender) misst die Umgebungshelligkeit sowie die Neigung und sendet diese Daten über ESP-NOW an einen zweiten ESP32 (Receiver).  
+Der Receiver stellt die Messwerte über ein Webinterface dar.
+
+Umgesetzt wurden die Varianten:
+GK:
+- **Wi-Fi Manager** (automatische WLAN-Konfiguration)
+- **Sleep-Mode** (Energieeinsparung zwischen Messungen)
+- **LDR (Helligkeitssensor):** Erkennt, wie hell oder dunkel es ist.
+- **Tilt B15 Sensor:** Erkennt, ob das Gerät gekippt oder bewegt wurde.  
+Ek:
+- **PIR Bewegungssensor:** Erkennt Bewegungen im Raum und löst z. B. einen Alarm aus.  
+- **Ultraschallsensor:** Misst die Entfernung zu einem Objekt.  
+- **DHT11 Sensor:** Misst Temperatur und Luftfeuchtigkeit.   
+- **RGB LED:** Zeigt Zustände mit Farben (z. B. grün, orange, rot).  
+- **Buzzer:** Gibt einen Ton aus bei Bewegung oder Alarm.  
+- **OLED Display:** Zeigt alle Messwerte übersichtlich an.
+
+
+## Systemarchitektur
+
+Die Sensoren erfassen verschiedene Daten (Bewegung, Temperatur, Luftfeuchtigkeit, Licht, Abstand, Display, RGB und Neigung).
+
+PIR Bewegungssensor + Ultraschallsensor + DHT11 + LDR + Tilt B15 + OLED Display + LDR + RGB LED  
+→ ESP32 Sender (Sensordaten erfassen & verarbeiten)  
+→ ESP-NOW (drahtlose Kommunikation ohne Router)  
+→ ESP32 Receiver (Daten empfangen & weiterverarbeiten)  
+→ Webserver (Anzeige der Daten im Browser in Echtzeit)
+
+| Komponente              | Anzahl | Beschreibung |
+|------------------------|:------:|--------------|
+| ESP32 Dev Board        | 2      | Hauptcontroller |
+| DHT11 Sensor           | 1      | Temperatur- & Luftfeuchtigkeitsmessung |
+| HC-SR04 Ultraschallsensor | 1   | Abstandsmessung |
+| PIR Bewegungssensor    | 1      | Bewegungserkennung |
+| LDR (Helligkeitssensor)| 1      | Lichtmessung (analog) |
+| Tilt B15 Sensor        | 1      | Neigungserkennung (digital) |
+| OLED Display 128x64    | 1      | Anzeige der Messwerte |
+| RGB LED                | 1      | Statusanzeige (Farben) |
+| Buzzer                 | 1      | Akustisches Signal |
+| Breadboard             | 1      | Steckbrett für Aufbau |
+| Jumper Kabel           | mehrere| Verbindungen zwischen Bauteilen |
+| USB Kabel              | 2      | Strom |
+
+---
+
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
