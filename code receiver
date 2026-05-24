@@ -1,18 +1,3 @@
-/*
- * ESP32 Receiver – ESP-NOW + Webserver + Telegram Bot
- *
- * Benötigte Libraries (Arduino Library Manager):
- *   - Universal Arduino Telegram Bot  (by Brian Lough)
- *   - ArduinoJson                     (by Benoit Blanchon, Version 6.x)
- *
- * Telegram Bot einrichten:
- *   1. @BotFather in Telegram öffnen
- *   2. /newbot → Name + Username vergeben
- *   3. Den API-Token kopieren → BOT_TOKEN
- *   4. Eigene Chat-ID herausfinden: @userinfobot schreiben
- *      → die Zahl bei "Id" kopieren → CHAT_ID
- */
-
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <esp_now.h>
@@ -21,91 +6,82 @@
 #include <UniversalTelegramBot.h>
 #include <ArduinoJson.h>
 
-// ================================================================
-// KONFIGURATION – hier anpassen!
-// ================================================================
+// ---------------- HIER ANPASSEN ----------------
+const char* WIFI_SSID = "SZU-Heim";
+const char* WIFI_PASS = "EZcq3uks2jhK8PFR";
 
-// Dein Heim-WLAN (für Internet-Zugang zum Telegram-Server)
-const char* WIFI_SSID = "DEIN_WLAN_NAME";
-const char* WIFI_PASS = "DEIN_WLAN_PASSWORT";
+#define BOT_TOKEN "8933340130:AAGfrroDn2pXxCCDYH6d6VE8MxEs8EpdOY8"
+#define CHAT_ID "8765169403"
 
-// Telegram
-#define BOT_TOKEN  "123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"  // von @BotFather
-#define CHAT_ID    "123456789"                               // deine Chat-ID
+// Wird benutzt, falls WLAN nicht verbunden wird.
+#define FALLBACK_ESPNOW_CHANNEL 1
 
-// AP für ESP-NOW (bleibt gleich wie beim Transmitter)
-#define ESPNOW_CHANNEL 1
 const char* AP_SSID = "ESP32-Empfaenger";
 const char* AP_PASS = "12345678";
 
-// ================================================================
-// TELEGRAM EINSTELLUNGEN
-// ================================================================
-#define TELEGRAM_POLL_MS     2000   // alle 2 s auf neue Nachrichten prüfen
-#define MOTION_COOLDOWN_MS  30000   // min. 30 s zwischen Motion-Alerts
-#define STATUS_INTERVAL_MS 300000   // alle 5 min automatischer Status (0 = aus)
+// ---------------- TELEGRAM ----------------
+const unsigned long TELEGRAM_POLL_MS = 2000;
+const unsigned long MOTION_COOLDOWN_MS = 30000;
+const unsigned long STATUS_INTERVAL_MS = 300000;
 
-bool alertsEnabled   = true;   // Motion-Alerts an/aus
-bool statusEnabled   = true;   // Automatischer Periodik-Status an/aus
+bool alertsEnabled = true;
+bool statusEnabled = false;
 
-// ================================================================
-// ESP-NOW PAKET
-// ================================================================
-#define PACKET_MAGIC   0xAABBCCDD
+unsigned long lastMotionAlertMs = 0;
+unsigned long lastStatusSentMs = 0;
+unsigned long lastTelegramPollMs = 0;
+bool lastMotionState = false;
+
+// ---------------- ESP-NOW PACKET ----------------
+#define PACKET_MAGIC 0xAABBCCDD
 #define PACKET_VERSION 2
 
 typedef struct __attribute__((packed)) {
   uint32_t magic;
-  uint8_t  version;
+  uint8_t version;
   uint32_t seq;
   uint32_t uptimeMs;
 
-  float    distanceCm;
-  float    temperatureC;
-  float    humidityPct;
+  float distanceCm;
+  float temperatureC;
+  float humidityPct;
   uint16_t lightRaw;
 
-  uint8_t  motion;
-  uint8_t  tilt;
-  uint8_t  dark;
+  uint8_t motion;
+  uint8_t tilt;
+  uint8_t dark;
 
-  uint8_t  sleeping;
-  uint8_t  historySample;
+  uint8_t sleeping;
+  uint8_t historySample;
   uint16_t secondsLeft;
 } SensorPacket;
 
-// ================================================================
-// GLOBALE ZUSTÄNDE
-// ================================================================
+// ---------------- CURRENT DATA ----------------
 SensorPacket currentPacket;
-bool         hasCurrentPacket = false;
-unsigned long lastReceiveMs   = 0;
+bool hasCurrentPacket = false;
+unsigned long lastReceiveMs = 0;
 
-SensorPacket     pendingPacket;
-volatile bool    hasPendingPacket = false;
-portMUX_TYPE     packetMux        = portMUX_INITIALIZER_UNLOCKED;
+SensorPacket pendingPacket;
+volatile bool hasPendingPacket = false;
+portMUX_TYPE packetMux = portMUX_INITIALIZER_UNLOCKED;
 
-unsigned long lastMotionAlertMs  = 0;
-unsigned long lastStatusSentMs   = 0;
-unsigned long lastTelegramPollMs = 0;
-bool          lastMotionState    = false;
-
-// ================================================================
-// HISTORY
-// ================================================================
+// ---------------- HISTORY ----------------
 const int HOUR_BUCKETS = 12;
 const int WEEK_BUCKETS = 168;
+
 const unsigned long HOUR_BUCKET_MS = 5UL * 60UL * 1000UL;
 const unsigned long WEEK_BUCKET_MS = 60UL * 60UL * 1000UL;
 
 struct HistoryBucket {
-  bool     valid;
+  bool valid;
   uint32_t slot;
   uint16_t count;
-  float    distanceCm;
-  float    temperatureC;
-  float    humidityPct;
-  float    lightRaw;
+
+  float distanceCm;
+  float temperatureC;
+  float humidityPct;
+  float lightRaw;
+
   uint16_t motionCount;
   uint16_t tiltCount;
   uint16_t darkCount;
@@ -114,16 +90,12 @@ struct HistoryBucket {
 HistoryBucket hourHistory[HOUR_BUCKETS];
 HistoryBucket weekHistory[WEEK_BUCKETS];
 
-// ================================================================
-// WEBSERVER + TELEGRAM OBJEKTE
-// ================================================================
-WebServer        server(80);
+// ---------------- OBJEKTE ----------------
+WebServer server(80);
 WiFiClientSecure secureClient;
 UniversalTelegramBot bot(BOT_TOKEN, secureClient);
 
-// ================================================================
-// HTML (identisch mit Original – hier gekürzt; Original einfügen)
-// ================================================================
+// ---------------- HTML ----------------
 const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <!doctype html>
 <html lang="de">
@@ -144,245 +116,387 @@ main{max-width:1000px;margin:auto;padding:18px}
 select{padding:8px;border:1px solid #ccd5df;border-radius:6px;background:white}
 canvas{width:100%;height:320px;border:1px solid #e1e7ee;border-radius:6px}
 .small{font-size:13px;color:#607080;margin-top:8px}
-.awake{color:#15803d}.sleep{color:#2563eb}
+.awake{color:#15803d}
+.sleep{color:#2563eb}
 </style>
 </head>
 <body>
 <header><h2>ESP32 Sensordaten</h2></header>
 <main>
-  <div class="grid">
-    <div class="card"><div class="label">Status</div><div class="value" id="mode">-</div></div>
-    <div class="card"><div class="label">Countdown</div><div class="value" id="countdown">-</div></div>
-    <div class="card"><div class="label">Bewegung</div><div class="value" id="motion">-</div></div>
-    <div class="card"><div class="label">Distanz</div><div class="value" id="distance">-</div></div>
-    <div class="card"><div class="label">Temperatur</div><div class="value" id="temperature">-</div></div>
-    <div class="card"><div class="label">Luftfeuchte</div><div class="value" id="humidity">-</div></div>
-    <div class="card"><div class="label">Neigung</div><div class="value" id="tilt">-</div></div>
-    <div class="card"><div class="label">Licht</div><div class="value" id="light">-</div></div>
-  </div>
-  <div class="panel">
-    <div class="controls">
-      <select id="metric">
-        <option value="temperatureC">Temperatur</option>
-        <option value="humidityPct">Luftfeuchte</option>
-        <option value="distanceCm">Distanz</option>
-        <option value="lightRaw">Licht Rohwert</option>
-      </select>
-      <select id="range">
-        <option value="hour">Letzte Stunde, alle 5 min</option>
-        <option value="week">Letzte Woche, jede Stunde</option>
-      </select>
-    </div>
-    <canvas id="chart" width="900" height="320"></canvas>
-    <div class="small" id="status">Warte auf Daten...</div>
-  </div>
+<div class="grid">
+<div class="card"><div class="label">Status</div><div class="value" id="mode">-</div></div>
+<div class="card"><div class="label">Countdown</div><div class="value" id="countdown">-</div></div>
+<div class="card"><div class="label">Bewegung</div><div class="value" id="motion">-</div></div>
+<div class="card"><div class="label">Distanz</div><div class="value" id="distance">-</div></div>
+<div class="card"><div class="label">Temperatur</div><div class="value" id="temperature">-</div></div>
+<div class="card"><div class="label">Luftfeuchte</div><div class="value" id="humidity">-</div></div>
+<div class="card"><div class="label">Neigung</div><div class="value" id="tilt">-</div></div>
+<div class="card"><div class="label">Licht</div><div class="value" id="light">-</div></div>
+</div>
+
+<div class="panel">
+<div class="controls">
+<select id="metric">
+<option value="temperatureC">Temperatur</option>
+<option value="humidityPct">Luftfeuchte</option>
+<option value="distanceCm">Distanz</option>
+<option value="lightRaw">Licht Rohwert</option>
+</select>
+<select id="range">
+<option value="hour">Letzte Stunde, alle 5 min</option>
+<option value="week">Letzte Woche, jede Stunde</option>
+</select>
+</div>
+<canvas id="chart" width="900" height="320"></canvas>
+<div class="small" id="status">Warte auf Daten...</div>
+</div>
 </main>
+
 <script>
-const labels={temperatureC:"Temperatur C",humidityPct:"Luftfeuchte %",distanceCm:"Distanz cm",lightRaw:"Licht Rohwert"};
-async function loadCurrent(){const r=await fetch("/api/current");const d=await r.json();if(!d.online){document.getElementById("status").textContent="Noch keine ESP-NOW Daten empfangen.";return;}const modeEl=document.getElementById("mode");modeEl.textContent=d.sleeping?"Sleep":"Awake";modeEl.className="value "+(d.sleeping?"sleep":"awake");document.getElementById("countdown").textContent=d.secondsLeft+" s";document.getElementById("motion").textContent=d.motion?"Ja":"Nein";document.getElementById("distance").textContent=d.distanceCm.toFixed(1)+" cm";document.getElementById("temperature").textContent=d.temperatureC.toFixed(1)+" C";document.getElementById("humidity").textContent=d.humidityPct.toFixed(1)+" %";document.getElementById("tilt").textContent=d.tilt?"Ja":"Nein";document.getElementById("light").textContent=d.dark?"Dunkel":"Hell";document.getElementById("status").textContent=(d.sleeping?"Sender schlaeft":"Sender ist wach")+" | Wechsel in "+d.secondsLeft+" s | Letztes Paket vor "+d.ageSec+" s | Paket #"+d.seq;}
-async function loadHistory(){const range=document.getElementById("range").value;const metric=document.getElementById("metric").value;const r=await fetch("/api/history?range="+range);const data=await r.json();drawChart(data.points,metric,labels[metric]);}
-function drawChart(points,metric,title){const c=document.getElementById("chart");const ctx=c.getContext("2d");ctx.clearRect(0,0,c.width,c.height);const padL=55,padR=18,padT=28,padB=38;const w=c.width-padL-padR;const h=c.height-padT-padB;ctx.fillStyle="#ffffff";ctx.fillRect(0,0,c.width,c.height);const vals=points.map(p=>p[metric]).filter(v=>v!==null&&!isNaN(v));ctx.fillStyle="#17202a";ctx.font="15px Arial";ctx.fillText(title,padL,18);if(vals.length<1){ctx.fillStyle="#607080";ctx.fillText("Noch keine historischen Durchschnittswerte.",padL,155);return;}let min=Math.min(...vals);let max=Math.max(...vals);if(min===max){min-=1;max+=1;}const y=v=>padT+h-((v-min)/(max-min))*h;const x=i=>padL+(points.length<=1?0:i*w/(points.length-1));ctx.strokeStyle="#d8e0e8";ctx.lineWidth=1;ctx.beginPath();for(let i=0;i<=4;i++){const gy=padT+i*h/4;ctx.moveTo(padL,gy);ctx.lineTo(padL+w,gy);}ctx.stroke();ctx.fillStyle="#607080";ctx.font="12px Arial";ctx.fillText(max.toFixed(1),6,padT+4);ctx.fillText(min.toFixed(1),6,padT+h);ctx.strokeStyle="#2563eb";ctx.lineWidth=2;ctx.beginPath();let started=false;points.forEach((p,i)=>{const v=p[metric];if(v===null||isNaN(v)){started=false;return;}if(!started){ctx.moveTo(x(i),y(v));started=true;}else{ctx.lineTo(x(i),y(v));}});ctx.stroke();ctx.fillStyle="#2563eb";points.forEach((p,i)=>{const v=p[metric];if(v===null||isNaN(v))return;ctx.beginPath();ctx.arc(x(i),y(v),3,0,Math.PI*2);ctx.fill();});ctx.fillStyle="#607080";ctx.font="12px Arial";if(points.length>0){ctx.fillText(points[0].label,padL,c.height-12);ctx.fillText(points[points.length-1].label,padL+w-55,c.height-12);}}
-async function refresh(){await loadCurrent();await loadHistory();}
-document.getElementById("metric").addEventListener("change",loadHistory);
-document.getElementById("range").addEventListener("change",loadHistory);
-refresh();setInterval(refresh,1000);
+const labels = {
+  temperatureC: "Temperatur C",
+  humidityPct: "Luftfeuchte %",
+  distanceCm: "Distanz cm",
+  lightRaw: "Licht Rohwert"
+};
+
+function fmt(v, unit){
+  if(v === null || v === undefined || isNaN(v)) return "-";
+  return Number(v).toFixed(1) + " " + unit;
+}
+
+async function loadCurrent(){
+  const r = await fetch("/api/current");
+  const d = await r.json();
+
+  if(!d.online){
+    document.getElementById("status").textContent = "Noch keine ESP-NOW Daten empfangen.";
+    return;
+  }
+
+  const modeEl = document.getElementById("mode");
+  modeEl.textContent = d.sleeping ? "Sleep" : "Awake";
+  modeEl.className = "value " + (d.sleeping ? "sleep" : "awake");
+
+  document.getElementById("countdown").textContent = d.secondsLeft + " s";
+  document.getElementById("motion").textContent = d.motion ? "Ja" : "Nein";
+  document.getElementById("distance").textContent = fmt(d.distanceCm, "cm");
+  document.getElementById("temperature").textContent = fmt(d.temperatureC, "C");
+  document.getElementById("humidity").textContent = fmt(d.humidityPct, "%");
+  document.getElementById("tilt").textContent = d.tilt ? "Ja" : "Nein";
+  document.getElementById("light").textContent = d.dark ? "Dunkel" : "Hell";
+
+  document.getElementById("status").textContent =
+    (d.sleeping ? "Sender schlaeft" : "Sender ist wach") +
+    " | Wechsel in " + d.secondsLeft +
+    " s | Letztes Paket vor " + d.ageSec +
+    " s | Paket #" + d.seq;
+}
+
+async function loadHistory(){
+  const range = document.getElementById("range").value;
+  const metric = document.getElementById("metric").value;
+  const r = await fetch("/api/history?range=" + range);
+  const data = await r.json();
+  drawChart(data.points, metric, labels[metric]);
+}
+
+function drawChart(points, metric, title){
+  const c = document.getElementById("chart");
+  const ctx = c.getContext("2d");
+  ctx.clearRect(0,0,c.width,c.height);
+
+  const padL = 55, padR = 18, padT = 28, padB = 38;
+  const w = c.width - padL - padR;
+  const h = c.height - padT - padB;
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0,0,c.width,c.height);
+
+  const vals = points.map(p => p[metric]).filter(v => v !== null && !isNaN(v));
+
+  ctx.fillStyle = "#17202a";
+  ctx.font = "15px Arial";
+  ctx.fillText(title, padL, 18);
+
+  if(vals.length < 1){
+    ctx.fillStyle = "#607080";
+    ctx.fillText("Noch keine historischen Durchschnittswerte.", padL, 155);
+    return;
+  }
+
+  let min = Math.min(...vals);
+  let max = Math.max(...vals);
+  if(min === max){ min -= 1; max += 1; }
+
+  const y = v => padT + h - ((v - min) / (max - min)) * h;
+  const x = i => padL + (points.length <= 1 ? 0 : i * w / (points.length - 1));
+
+  ctx.strokeStyle = "#d8e0e8";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for(let i=0;i<=4;i++){
+    const gy = padT + i*h/4;
+    ctx.moveTo(padL, gy);
+    ctx.lineTo(padL+w, gy);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle = "#607080";
+  ctx.font = "12px Arial";
+  ctx.fillText(max.toFixed(1), 6, padT+4);
+  ctx.fillText(min.toFixed(1), 6, padT+h);
+
+  ctx.strokeStyle = "#2563eb";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+
+  let started = false;
+  points.forEach((p,i)=>{
+    const v = p[metric];
+    if(v === null || isNaN(v)){
+      started = false;
+      return;
+    }
+
+    if(!started){
+      ctx.moveTo(x(i), y(v));
+      started = true;
+    } else {
+      ctx.lineTo(x(i), y(v));
+    }
+  });
+  ctx.stroke();
+
+  ctx.fillStyle = "#2563eb";
+  points.forEach((p,i)=>{
+    const v = p[metric];
+    if(v === null || isNaN(v)) return;
+    ctx.beginPath();
+    ctx.arc(x(i), y(v), 3, 0, Math.PI*2);
+    ctx.fill();
+  });
+}
+
+async function refresh(){
+  await loadCurrent();
+  await loadHistory();
+}
+
+document.getElementById("metric").addEventListener("change", loadHistory);
+document.getElementById("range").addEventListener("change", loadHistory);
+
+refresh();
+setInterval(refresh, 1000);
 </script>
 </body>
 </html>
 )rawliteral";
 
-// ================================================================
-// NETZWERK SETUP
-// ================================================================
-void setupNetwork() {
-  // AP für ESP-NOW Empfang auf festem Kanal
-  WiFi.mode(WIFI_AP_STA);
-  WiFi.softAP(AP_SSID, AP_PASS, ESPNOW_CHANNEL);
-  Serial.print("AP IP: ");
-  Serial.println(WiFi.softAPIP());
+// ---------------- HELPERS ----------------
+String boolText(bool value) {
+  return value ? "true" : "false";
+}
 
-  // Mit Heim-WLAN verbinden (für Telegram)
+String jsonFloat(float value, int digits) {
+  if (isnan(value) || isinf(value)) return "null";
+  return String(value, digits);
+}
+
+// ---------------- NETWORK SETUP ----------------
+void setupNetwork() {
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.setSleep(false);
+  esp_wifi_set_ps(WIFI_PS_NONE);
+
   Serial.print("Verbinde mit WLAN: ");
   Serial.println(WIFI_SSID);
+
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 
   int tries = 0;
-  while (WiFi.status() != WL_CONNECTED && tries < 20) {
+  while (WiFi.status() != WL_CONNECTED && tries < 40) {
     delay(500);
     Serial.print(".");
     tries++;
   }
 
+  int channel = FALLBACK_ESPNOW_CHANNEL;
+
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nWLAN verbunden! IP: " + WiFi.localIP().toString());
+    channel = WiFi.channel();
+
+    Serial.println();
+    Serial.print("WLAN verbunden. IP: ");
+    Serial.println(WiFi.localIP());
   } else {
-    Serial.println("\nWLAN nicht erreichbar – Telegram deaktiviert.");
+    Serial.println();
+    Serial.println("WLAN nicht verbunden. Telegram ist deaktiviert.");
   }
 
-  Serial.print("Empfaenger MAC: ");
+  WiFi.softAP(AP_SSID, AP_PASS, channel);
+
+  Serial.print("AP IP: ");
+  Serial.println(WiFi.softAPIP());
+
+  Serial.print("STA MAC fuer Sender: ");
   Serial.println(WiFi.macAddress());
 
-  // TLS ohne Zertifikatsprüfung (reicht für Schul-/Hobbyprojekte)
+  Serial.print("AP MAC: ");
+  Serial.println(WiFi.softAPmacAddress());
+
+  Serial.print("WLAN Kanal fuer Sender: ");
+  Serial.println(channel);
+
   secureClient.setInsecure();
 }
 
-// ================================================================
-// TELEGRAM – Nachricht senden
-// ================================================================
+// ---------------- TELEGRAM ----------------
 void sendTelegram(const String& text) {
-  if (WiFi.status() != WL_CONNECTED) return;
-  bot.sendMessage(CHAT_ID, text, "");
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("Telegram nicht gesendet: WLAN nicht verbunden");
+    return;
+  }
+
+  bool ok = bot.sendMessage(CHAT_ID, text, "");
+
+  Serial.print("Telegram sendMessage: ");
+  Serial.println(ok ? "OK" : "FEHLER");
 }
 
-// ================================================================
-// TELEGRAM – Status-Nachricht zusammenbauen
-// ================================================================
-String buildStatusMessage() {
-  if (!hasCurrentPacket) return "⚠️ Noch keine Sensordaten empfangen.";
+String buildTelegramStatus() {
+  if (!hasCurrentPacket) {
+    return "Noch keine Sensordaten empfangen.";
+  }
 
-  String msg = "📡 *ESP32 Sensorstatus*\n";
-  msg += "━━━━━━━━━━━━━━━━━━\n";
-  msg += currentPacket.sleeping ? "💤 Modus: *Sleep*\n" : "✅ Modus: *Awake*\n";
-  msg += "⏱ Verbleibend: " + String(currentPacket.secondsLeft) + " s\n\n";
+  String msg = "ESP32 Sensorstatus\n";
+  msg += "Modus: ";
+  msg += currentPacket.sleeping ? "Sleep\n" : "Awake\n";
+  msg += "Countdown: " + String(currentPacket.secondsLeft) + " s\n\n";
 
-  msg += "🌡 Temperatur:  " + String(currentPacket.temperatureC, 1) + " °C\n";
-  msg += "💧 Luftfeuchte: " + String(currentPacket.humidityPct, 1) + " %\n";
-  msg += "📏 Distanz:     " + String(currentPacket.distanceCm, 1) + " cm\n";
-  msg += "💡 Licht:       ";
-  msg += currentPacket.dark ? "Dunkel 🌑\n" : "Hell ☀️\n";
-  msg += "🏃 Bewegung:    ";
-  msg += currentPacket.motion ? "Ja ✅\n" : "Nein ❌\n";
-  msg += "📐 Neigung:     ";
-  msg += currentPacket.tilt ? "Ja ✅\n" : "Nein ❌\n";
+  msg += "Temperatur: " + String(currentPacket.temperatureC, 1) + " C\n";
+  msg += "Luftfeuchte: " + String(currentPacket.humidityPct, 1) + " %\n";
+  msg += "Distanz: " + String(currentPacket.distanceCm, 1) + " cm\n";
+  msg += "Licht: ";
+  msg += currentPacket.dark ? "Dunkel\n" : "Hell\n";
+  msg += "Bewegung: ";
+  msg += currentPacket.motion ? "Ja\n" : "Nein\n";
+  msg += "Neigung: ";
+  msg += currentPacket.tilt ? "Ja\n" : "Nein\n";
 
-  unsigned long ageSec = (millis() - lastReceiveMs) / 1000;
-  msg += "\n📦 Paket #" + String(currentPacket.seq);
-  msg += " | vor " + String(ageSec) + " s";
+  msg += "\nPaket #" + String(currentPacket.seq);
+  msg += " | vor " + String((millis() - lastReceiveMs) / 1000) + " s";
 
   return msg;
 }
 
-// ================================================================
-// TELEGRAM – eingehende Befehle verarbeiten
-// ================================================================
-void handleTelegramCommands() {
+void handleTelegram() {
   if (WiFi.status() != WL_CONNECTED) return;
 
   unsigned long now = millis();
-  if (now - lastTelegramPollMs < TELEGRAM_POLL_MS) return;
-  lastTelegramPollMs = now;
 
-  int numMessages = bot.getUpdates(bot.last_message_received + 1);
+  if (now - lastTelegramPollMs >= TELEGRAM_POLL_MS) {
+    lastTelegramPollMs = now;
 
-  for (int i = 0; i < numMessages; i++) {
-    String text    = bot.messages[i].text;
-    String chat_id = bot.messages[i].chat_id;
+    int numMessages = bot.getUpdates(bot.last_message_received + 1);
 
-    Serial.println("Telegram Nachricht: " + text);
+    for (int i = 0; i < numMessages; i++) {
+      String text = bot.messages[i].text;
+      String chatId = bot.messages[i].chat_id;
 
-    // Nur auf die eigene Chat-ID reagieren
-    if (chat_id != String(CHAT_ID)) {
-      bot.sendMessage(chat_id, "⛔ Nicht autorisiert.", "");
-      continue;
-    }
+      Serial.print("Telegram von ");
+      Serial.print(chatId);
+      Serial.print(": ");
+      Serial.println(text);
 
-    // ---- Befehle ----
-    if (text == "/start" || text == "/help") {
-      String help = "🤖 *ESP32 Telegram Bot*\n\n";
-      help += "Verfügbare Befehle:\n";
-      help += "/status  – Aktuelle Sensordaten\n";
-      help += "/alerts  – Motion-Alerts an/aus\n";
-      help += "/auto    – Auto-Status (5 min) an/aus\n";
-      help += "/hilfe   – Diese Hilfe\n";
-      bot.sendMessage(CHAT_ID, help, "Markdown");
-    }
+      if (chatId != String(CHAT_ID)) {
+        bot.sendMessage(chatId, "Nicht autorisiert. Deine Chat-ID ist: " + chatId, "");
+        continue;
+      }
 
-    else if (text == "/status") {
-      bot.sendMessage(CHAT_ID, buildStatusMessage(), "Markdown");
-    }
-
-    else if (text == "/alerts") {
-      alertsEnabled = !alertsEnabled;
-      String reply = alertsEnabled
-        ? "✅ Motion-Alerts *aktiviert*."
-        : "🔕 Motion-Alerts *deaktiviert*.";
-      bot.sendMessage(CHAT_ID, reply, "Markdown");
-    }
-
-    else if (text == "/auto") {
-      statusEnabled = !statusEnabled;
-      String reply = statusEnabled
-        ? "✅ Automatischer Status alle 5 min *aktiviert*."
-        : "🔕 Automatischer Status *deaktiviert*.";
-      bot.sendMessage(CHAT_ID, reply, "Markdown");
-    }
-
-    else if (text == "/hilfe") {
-      bot.sendMessage(CHAT_ID, "ℹ️ Tippe /help für alle Befehle.", "");
-    }
-
-    else {
-      bot.sendMessage(CHAT_ID, "❓ Unbekannter Befehl. Tippe /help.", "");
+      if (text == "/start" || text == "/help") {
+        String help = "ESP32 Telegram Bot\n\n";
+        help += "/status - aktuelle Sensordaten\n";
+        help += "/alerts - Bewegungsalarm an/aus\n";
+        help += "/auto - Auto-Status alle 5 min an/aus\n";
+        help += "/help - Hilfe anzeigen";
+        bot.sendMessage(CHAT_ID, help, "");
+      } else if (text == "/status") {
+        bot.sendMessage(CHAT_ID, buildTelegramStatus(), "");
+      } else if (text == "/alerts") {
+        alertsEnabled = !alertsEnabled;
+        bot.sendMessage(CHAT_ID, alertsEnabled ? "Bewegungsalarm aktiviert." : "Bewegungsalarm deaktiviert.", "");
+      } else if (text == "/auto") {
+        statusEnabled = !statusEnabled;
+        bot.sendMessage(CHAT_ID, statusEnabled ? "Auto-Status aktiviert." : "Auto-Status deaktiviert.", "");
+      } else {
+        bot.sendMessage(CHAT_ID, "Unbekannter Befehl. Tippe /help.", "");
+      }
     }
   }
-}
 
-// ================================================================
-// TELEGRAM – automatische Alerts & Periodik-Status
-// ================================================================
-void handleTelegramAlerts() {
   if (!hasCurrentPacket) return;
-  unsigned long now = millis();
 
-  // Motion-Alert: nur bei neuer Bewegungserkennung + Cooldown
   if (alertsEnabled) {
-    bool currentMotion = (bool)currentPacket.motion;
-    if (currentMotion && !lastMotionState &&
-        now - lastMotionAlertMs > MOTION_COOLDOWN_MS) {
-      String alert = "🚨 *Bewegung erkannt!*\n";
-      alert += "📏 Distanz: " + String(currentPacket.distanceCm, 1) + " cm\n";
-      alert += "🌡 Temp: " + String(currentPacket.temperatureC, 1) + " °C\n";
-      alert += "📐 Neigung: " + String(currentPacket.tilt ? "Ja" : "Nein");
+    bool currentMotion = currentPacket.motion;
+
+    if (currentMotion && !lastMotionState && now - lastMotionAlertMs > MOTION_COOLDOWN_MS) {
+      String alert = "Bewegung erkannt!\n";
+      alert += "Distanz: " + String(currentPacket.distanceCm, 1) + " cm\n";
+      alert += "Temperatur: " + String(currentPacket.temperatureC, 1) + " C\n";
+      alert += "Neigung: ";
+      alert += currentPacket.tilt ? "Ja" : "Nein";
+
       sendTelegram(alert);
       lastMotionAlertMs = now;
     }
+
     lastMotionState = currentMotion;
   }
 
-  // Automatischer Periodik-Status
-  if (statusEnabled && STATUS_INTERVAL_MS > 0 &&
-      now - lastStatusSentMs > STATUS_INTERVAL_MS) {
-    sendTelegram(buildStatusMessage());
+  if (statusEnabled && now - lastStatusSentMs > STATUS_INTERVAL_MS) {
+    sendTelegram(buildTelegramStatus());
     lastStatusSentMs = now;
   }
 }
 
-// ================================================================
-// HISTORY HELPERS (unverändert)
-// ================================================================
+// ---------------- HISTORY HELPERS ----------------
 void resetBucket(HistoryBucket &b, uint32_t slot) {
-  b.valid = true; b.slot = slot; b.count = 0;
-  b.distanceCm = 0; b.temperatureC = 0;
-  b.humidityPct = 0; b.lightRaw = 0;
-  b.motionCount = 0; b.tiltCount = 0; b.darkCount = 0;
+  b.valid = true;
+  b.slot = slot;
+  b.count = 0;
+
+  b.distanceCm = 0;
+  b.temperatureC = 0;
+  b.humidityPct = 0;
+  b.lightRaw = 0;
+
+  b.motionCount = 0;
+  b.tiltCount = 0;
+  b.darkCount = 0;
 }
 
 void addToBucket(HistoryBucket &b, SensorPacket &p) {
   b.count++;
-  b.distanceCm    += (p.distanceCm    - b.distanceCm)    / b.count;
-  b.temperatureC  += (p.temperatureC  - b.temperatureC)  / b.count;
-  b.humidityPct   += (p.humidityPct   - b.humidityPct)   / b.count;
-  b.lightRaw      += ((float)p.lightRaw - b.lightRaw)    / b.count;
+
+  b.distanceCm += (p.distanceCm - b.distanceCm) / b.count;
+  b.temperatureC += (p.temperatureC - b.temperatureC) / b.count;
+  b.humidityPct += (p.humidityPct - b.humidityPct) / b.count;
+  b.lightRaw += ((float)p.lightRaw - b.lightRaw) / b.count;
+
   if (p.motion) b.motionCount++;
-  if (p.tilt)   b.tiltCount++;
-  if (p.dark)   b.darkCount++;
+  if (p.tilt) b.tiltCount++;
+  if (p.dark) b.darkCount++;
 }
 
-void addToHistoryArray(HistoryBucket buckets[], int count, unsigned long ms, SensorPacket &p) {
-  uint32_t slot  = millis() / ms;
-  int      index = slot % count;
-  if (!buckets[index].valid || buckets[index].slot != slot)
+void addToHistoryArray(HistoryBucket buckets[], int bucketCount, unsigned long bucketMs, SensorPacket &p) {
+  uint32_t slot = millis() / bucketMs;
+  int index = slot % bucketCount;
+
+  if (!buckets[index].valid || buckets[index].slot != slot) {
     resetBucket(buckets[index], slot);
+  }
+
   addToBucket(buckets[index], p);
 }
 
@@ -391,17 +505,18 @@ void addToHistory(SensorPacket &p) {
   addToHistoryArray(weekHistory, WEEK_BUCKETS, WEEK_BUCKET_MS, p);
 }
 
-// ================================================================
-// ESP-NOW EMPFANG
-// ================================================================
-void onDataRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
+// ---------------- ESP-NOW RECEIVE ----------------
+void onDataRecv(const esp_now_recv_info_t *info, const uint8_t *incomingData, int len) {
   if (len != sizeof(SensorPacket)) return;
-  SensorPacket pkt;
-  memcpy(&pkt, data, sizeof(pkt));
-  if (pkt.magic != PACKET_MAGIC || pkt.version != PACKET_VERSION) return;
+
+  SensorPacket packet;
+  memcpy(&packet, incomingData, sizeof(packet));
+
+  if (packet.magic != PACKET_MAGIC) return;
+  if (packet.version != PACKET_VERSION) return;
 
   portENTER_CRITICAL(&packetMux);
-  pendingPacket    = pkt;
+  pendingPacket = packet;
   hasPendingPacket = true;
   portEXIT_CRITICAL(&packetMux);
 }
@@ -409,100 +524,134 @@ void onDataRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
 void processPendingPacket() {
   if (!hasPendingPacket) return;
 
-  SensorPacket pkt;
+  SensorPacket packet;
+
   portENTER_CRITICAL(&packetMux);
-  pkt              = pendingPacket;
+  packet = pendingPacket;
   hasPendingPacket = false;
   portEXIT_CRITICAL(&packetMux);
 
-  currentPacket    = pkt;
+  currentPacket = packet;
   hasCurrentPacket = true;
-  lastReceiveMs    = millis();
+  lastReceiveMs = millis();
 
-  if (pkt.historySample) addToHistory(pkt);
+  if (packet.historySample) {
+    addToHistory(packet);
+  }
 
-  Serial.printf("Pkt #%u %s Rest:%ds T:%.1f D:%.1f\n",
-    pkt.seq, pkt.sleeping ? "Sleep" : "Awake",
-    pkt.secondsLeft, pkt.temperatureC, pkt.distanceCm);
+  Serial.print("Paket #");
+  Serial.print(packet.seq);
+  Serial.print(packet.sleeping ? " Sleep " : " Awake ");
+  Serial.print("Rest: ");
+  Serial.print(packet.secondsLeft);
+  Serial.print("s Temp: ");
+  Serial.print(packet.temperatureC);
+  Serial.print(" Dist: ");
+  Serial.println(packet.distanceCm);
 }
 
-// ================================================================
-// WEBSERVER API (unverändert)
-// ================================================================
-String boolText(bool v) { return v ? "true" : "false"; }
-
-void handleRoot() { server.send_P(200, "text/html", INDEX_HTML); }
+// ---------------- API ----------------
+void handleRoot() {
+  server.send_P(200, "text/html", INDEX_HTML);
+}
 
 void handleCurrent() {
   if (!hasCurrentPacket) {
     server.send(200, "application/json", "{\"online\":false}");
     return;
   }
+
   String json = "{";
   json += "\"online\":true,";
-  json += "\"seq\":"         + String(currentPacket.seq) + ",";
-  json += "\"ageSec\":"      + String((millis() - lastReceiveMs) / 1000) + ",";
-  json += "\"sleeping\":"    + boolText(currentPacket.sleeping) + ",";
+  json += "\"seq\":" + String(currentPacket.seq) + ",";
+  json += "\"ageSec\":" + String((millis() - lastReceiveMs) / 1000) + ",";
+  json += "\"sleeping\":" + boolText(currentPacket.sleeping) + ",";
   json += "\"secondsLeft\":" + String(currentPacket.secondsLeft) + ",";
-  json += "\"distanceCm\":"  + String(currentPacket.distanceCm, 1) + ",";
-  json += "\"temperatureC\":"+ String(currentPacket.temperatureC, 1) + ",";
-  json += "\"humidityPct\":" + String(currentPacket.humidityPct, 1) + ",";
-  json += "\"lightRaw\":"    + String(currentPacket.lightRaw) + ",";
-  json += "\"motion\":"      + boolText(currentPacket.motion) + ",";
-  json += "\"tilt\":"        + boolText(currentPacket.tilt) + ",";
-  json += "\"dark\":"        + boolText(currentPacket.dark);
+  json += "\"distanceCm\":" + jsonFloat(currentPacket.distanceCm, 1) + ",";
+  json += "\"temperatureC\":" + jsonFloat(currentPacket.temperatureC, 1) + ",";
+  json += "\"humidityPct\":" + jsonFloat(currentPacket.humidityPct, 1) + ",";
+  json += "\"lightRaw\":" + String(currentPacket.lightRaw) + ",";
+  json += "\"motion\":" + boolText(currentPacket.motion) + ",";
+  json += "\"tilt\":" + boolText(currentPacket.tilt) + ",";
+  json += "\"dark\":" + boolText(currentPacket.dark);
   json += "}";
+
   server.send(200, "application/json", json);
 }
 
 void appendBucketJson(String &json, HistoryBucket &b, String label) {
-  json += "{\"label\":\"" + label + "\",";
+  json += "{";
+  json += "\"label\":\"" + label + "\",";
+
   if (!b.valid || b.count == 0) {
-    json += "\"distanceCm\":null,\"temperatureC\":null,\"humidityPct\":null,\"lightRaw\":null,\"motion\":null,\"tilt\":null,\"dark\":null";
+    json += "\"distanceCm\":null,";
+    json += "\"temperatureC\":null,";
+    json += "\"humidityPct\":null,";
+    json += "\"lightRaw\":null,";
+    json += "\"motion\":null,";
+    json += "\"tilt\":null,";
+    json += "\"dark\":null";
   } else {
-    json += "\"distanceCm\":"   + String(b.distanceCm, 1)  + ",";
-    json += "\"temperatureC\":" + String(b.temperatureC, 1) + ",";
-    json += "\"humidityPct\":"  + String(b.humidityPct, 1)  + ",";
-    json += "\"lightRaw\":"     + String(b.lightRaw, 0)     + ",";
-    json += "\"motion\":"       + boolText(b.motionCount > b.count / 2) + ",";
-    json += "\"tilt\":"         + boolText(b.tiltCount   > b.count / 2) + ",";
-    json += "\"dark\":"         + boolText(b.darkCount   > b.count / 2);
+    json += "\"distanceCm\":" + jsonFloat(b.distanceCm, 1) + ",";
+    json += "\"temperatureC\":" + jsonFloat(b.temperatureC, 1) + ",";
+    json += "\"humidityPct\":" + jsonFloat(b.humidityPct, 1) + ",";
+    json += "\"lightRaw\":" + jsonFloat(b.lightRaw, 0) + ",";
+    json += "\"motion\":" + boolText(b.motionCount > b.count / 2) + ",";
+    json += "\"tilt\":" + boolText(b.tiltCount > b.count / 2) + ",";
+    json += "\"dark\":" + boolText(b.darkCount > b.count / 2);
   }
+
   json += "}";
 }
 
-void sendHistoryJson(HistoryBucket buckets[], int bucketCount, unsigned long bucketMs, const char* unit) {
+void sendHistoryJson(HistoryBucket buckets[], int bucketCount, unsigned long bucketMs, const char* unitLabel) {
   uint32_t currentSlot = millis() / bucketMs;
-  uint32_t firstSlot   = currentSlot >= (uint32_t)(bucketCount - 1)
-                         ? currentSlot - (bucketCount - 1) : 0;
+  uint32_t firstSlot = currentSlot >= (uint32_t)(bucketCount - 1) ? currentSlot - (bucketCount - 1) : 0;
+
   String json;
   json.reserve(18000);
   json = "{\"points\":[";
+
   for (uint32_t slot = firstSlot; slot <= currentSlot; slot++) {
     if (slot > firstSlot) json += ",";
-    int    index = slot % bucketCount;
-    int    age   = currentSlot - slot;
-    String label = age == 0 ? "jetzt" : "-" + String(age) + unit;
+
+    int index = slot % bucketCount;
+    int age = currentSlot - slot;
+
+    String label = age == 0 ? "jetzt" : "-" + String(age) + unitLabel;
+
     if (buckets[index].valid && buckets[index].slot == slot) {
       appendBucketJson(json, buckets[index], label);
     } else {
-      HistoryBucket empty = {};
-      appendBucketJson(json, empty, label);
+      HistoryBucket emptyBucket = {};
+      appendBucketJson(json, emptyBucket, label);
     }
   }
+
   json += "]}";
   server.send(200, "application/json", json);
 }
 
 void handleHistory() {
   String range = server.arg("range");
-  if (range == "week") sendHistoryJson(weekHistory, WEEK_BUCKETS, WEEK_BUCKET_MS, "h");
-  else                 sendHistoryJson(hourHistory,  HOUR_BUCKETS, HOUR_BUCKET_MS, "x5min");
+
+  if (range == "week") {
+    sendHistoryJson(weekHistory, WEEK_BUCKETS, WEEK_BUCKET_MS, "h");
+  } else {
+    sendHistoryJson(hourHistory, HOUR_BUCKETS, HOUR_BUCKET_MS, "x5min");
+  }
 }
 
-// ================================================================
-// SETUP
-// ================================================================
+void setupServer() {
+  server.on("/", handleRoot);
+  server.on("/api/current", handleCurrent);
+  server.on("/api/history", handleHistory);
+
+  server.begin();
+  Serial.println("Webserver gestartet");
+}
+
+// ---------------- SETUP / LOOP ----------------
 void setup() {
   Serial.begin(115200);
 
@@ -512,27 +661,16 @@ void setup() {
     Serial.println("ESP-NOW Fehler");
     while (true);
   }
+
   esp_now_register_recv_cb(onDataRecv);
 
-  server.on("/",            handleRoot);
-  server.on("/api/current", handleCurrent);
-  server.on("/api/history", handleHistory);
-  server.begin();
-  Serial.println("Webserver gestartet");
+  setupServer();
 
-  // Startnachricht an Telegram senden
-  if (WiFi.status() == WL_CONNECTED) {
-    sendTelegram("🟢 *ESP32 Receiver gestartet!*\nIP: " + WiFi.localIP().toString() +
-                 "\nBefehle: /status /alerts /auto /help");
-  }
+  sendTelegram("ESP32 Empfaenger gestartet.\nBefehl: /status");
 }
 
-// ================================================================
-// LOOP
-// ================================================================
 void loop() {
   processPendingPacket();
   server.handleClient();
-  handleTelegramCommands();  // Befehle empfangen
-  handleTelegramAlerts();    // Alerts & Auto-Status senden
+  handleTelegram();
 }
