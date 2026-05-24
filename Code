@@ -1,7 +1,35 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <WiFi.h>
+#include <esp_now.h>
+#include <esp_wifi.h>
 #include "DHT.h"
+
+// ---------------- ESP-NOW ----------------
+#define ESPNOW_CHANNEL 1
+uint8_t receiverAddress[] = {0x00, 0x70, 0x07, 0x25, 0x77, 0x4C};
+
+#define PACKET_MAGIC 0xAABBCCDD
+#define PACKET_VERSION 1
+
+typedef struct __attribute__((packed)) {
+  uint32_t magic;
+  uint8_t version;
+  uint32_t seq;
+  uint32_t uptimeMs;
+
+  float distanceCm;
+  float temperatureC;
+  float humidityPct;
+  uint16_t lightRaw;
+
+  uint8_t motion;
+  uint8_t tilt;
+  uint8_t dark;
+} SensorPacket;
+
+uint32_t packetSeq = 0;
 
 // ---------------- OLED ----------------
 #define SCREEN_WIDTH 128
@@ -29,6 +57,9 @@ DHT dht(DHTPIN, DHTTYPE);
 // ---------------- NEW SENSORS ----------------
 int tiltPin = 32;
 int lightPin = 34;
+
+// Optional: nur verwenden, wenn Sensor-VCC ueber MOSFET/GPIO geschaltet ist.
+int sensorPowerPin = -1;
 
 // ---------------- SLEEP / MITTELWERT ----------------
 const unsigned long MEASURE_TIME = 30000;
@@ -58,13 +89,15 @@ int avgLight = 0;
 int avgPir = LOW;
 int avgTilt = LOW;
 
+void setSensorPower(bool on) {
+  if (sensorPowerPin >= 0) digitalWrite(sensorPowerPin, on ? HIGH : LOW);
+}
+
 // ---------------- DISTANZ ----------------
 float measureDistance() {
-
   float sum = 0;
 
   for (int i = 0; i < 5; i++) {
-
     digitalWrite(TRIG, LOW);
     delayMicroseconds(5);
     digitalWrite(TRIG, HIGH);
@@ -86,6 +119,51 @@ void setColor(int r, int g, int b) {
   ledcWrite(redPin, r);
   ledcWrite(greenPin, g);
   ledcWrite(bluePin, b);
+}
+
+// ---------------- ESP-NOW ----------------
+void setupEspNow() {
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+
+  esp_wifi_set_promiscuous(true);
+  esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
+  esp_wifi_set_promiscuous(false);
+
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("ESP-NOW Fehler");
+    while (true);
+  }
+
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(peerInfo.peer_addr, receiverAddress, 6);
+  peerInfo.channel = ESPNOW_CHANNEL;
+  peerInfo.encrypt = false;
+
+  if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+    Serial.println("ESP-NOW Peer Fehler");
+    while (true);
+  }
+}
+
+void sendAveragePacket() {
+  SensorPacket packet;
+
+  packet.magic = PACKET_MAGIC;
+  packet.version = PACKET_VERSION;
+  packet.seq = packetSeq++;
+  packet.uptimeMs = millis();
+
+  packet.distanceCm = avgDistance;
+  packet.temperatureC = avgTemp;
+  packet.humidityPct = avgHum;
+  packet.lightRaw = avgLight;
+
+  packet.motion = avgPir == HIGH ? 1 : 0;
+  packet.tilt = avgTilt == HIGH ? 1 : 0;
+  packet.dark = avgLight > 3000 ? 1 : 0;
+
+  esp_now_send(receiverAddress, (uint8_t *)&packet, sizeof(packet));
 }
 
 // ---------------- MITTELWERTE ----------------
@@ -142,9 +220,7 @@ void finalizeAverages() {
 
 int remainingSeconds(unsigned long phaseTime) {
   unsigned long elapsed = millis() - phaseStart;
-
   if (elapsed >= phaseTime) return 1;
-
   return (phaseTime - elapsed + 999) / 1000;
 }
 
@@ -152,6 +228,13 @@ void sensorsOffForSleep() {
   noTone(buzzer);
   digitalWrite(TRIG, LOW);
   setColor(0, 0, 0);
+  setSensorPower(false);
+}
+
+void sensorsOnForAwake() {
+  setSensorPower(true);
+  if (sensorPowerPin >= 0) delay(1000);
+  dht.begin();
 }
 
 // ---------------- OLED ----------------
@@ -196,7 +279,6 @@ void showOLED(int pir, float distance, int tilt, float t, float h, bool isDark, 
 
 // ---------------- SETUP ----------------
 void setup() {
-
   Serial.begin(115200);
 
   pinMode(TRIG, OUTPUT);
@@ -206,6 +288,13 @@ void setup() {
   pinMode(buzzer, OUTPUT);
 
   pinMode(tiltPin, INPUT);
+  pinMode(lightPin, INPUT);
+
+  if (sensorPowerPin >= 0) {
+    pinMode(sensorPowerPin, OUTPUT);
+    setSensorPower(true);
+    delay(1000);
+  }
 
   Wire.begin(21, 22);
 
@@ -223,6 +312,7 @@ void setup() {
   ledcAttach(bluePin, 5000, 8);
 
   dht.begin();
+  setupEspNow();
 
   resetAverages();
   phaseStart = millis();
@@ -230,11 +320,12 @@ void setup() {
 
 // ---------------- LOOP ----------------
 void loop() {
-
   unsigned long now = millis();
 
   if (!sleepMode && now - phaseStart >= MEASURE_TIME) {
     finalizeAverages();
+    sendAveragePacket();
+
     sleepMode = true;
     phaseStart = now;
     sensorsOffForSleep();
@@ -244,6 +335,7 @@ void loop() {
     sleepMode = false;
     phaseStart = now;
     resetAverages();
+    sensorsOnForAwake();
   }
 
   if (sleepMode) {
@@ -256,37 +348,30 @@ void loop() {
     return;
   }
 
-  // -------- PIR --------
   int pir = digitalRead(pirPin);
 
   if (pir == HIGH) tone(buzzer, 1200);
   else noTone(buzzer);
 
-  // -------- DISTANZ --------
   float distance = measureDistance();
 
-  // -------- DHT11 --------
   float h = dht.readHumidity();
   float t = dht.readTemperature();
 
-  // -------- TILT (UMGEDREHT) --------
   int tilt = !digitalRead(tiltPin);
 
-  // -------- LIGHT (4095 = dunkel) --------
   int light = analogRead(lightPin);
 
   bool isDark = (light > 3000);
 
   addAverages(pir, distance, tilt, t, h, light);
 
-  // -------- RGB --------
   if (distance > 0 && distance < 10) setColor(255, 0, 0);
   else if (distance < 25) setColor(255, 120, 0);
   else setColor(0, 255, 0);
 
   int secondsLeft = remainingSeconds(MEASURE_TIME);
 
-  // -------- OLED --------
   showOLED(pir, distance, tilt, t, h, isDark, "Awake", secondsLeft);
 
   delay(50);
