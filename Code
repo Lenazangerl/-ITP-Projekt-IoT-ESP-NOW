@@ -106,8 +106,6 @@ void loop() {
   // -------- DHT11 --------
   float h = dht.readHumidity();
   float t = dht.readTemperature();
-  t = round(t * 10) / 10.0;
-
   // -------- TILT (UMGEDREHT) --------
   int tilt = !digitalRead(tiltPin);
 
@@ -137,8 +135,7 @@ void loop() {
   display.print("Dist:");
   display.print(distance);
   display.print(" Temp:");
-  display.print(t);
-  display.println("C");
+  display.println(t);
 
   // Line 3: Feuchte + Licht
   display.setCursor(0, 24);
