@@ -6,12 +6,14 @@
 #include <esp_wifi.h>
 #include "DHT.h"
 
-// ---------------- ESP-NOW ----------------
+// Muss zum "WLAN Kanal fuer Sender" vom Empfaenger passen.
 #define ESPNOW_CHANNEL 11
+
+// Muss zur "STA MAC fuer Sender" vom Empfaenger passen.
 uint8_t receiverAddress[] = {0x00, 0x70, 0x07, 0x25, 0x77, 0x4C};
 
 #define PACKET_MAGIC 0xAABBCCDD
-#define PACKET_VERSION 1
+#define PACKET_VERSION 2
 
 typedef struct __attribute__((packed)) {
   uint32_t magic;
@@ -27,9 +29,20 @@ typedef struct __attribute__((packed)) {
   uint8_t motion;
   uint8_t tilt;
   uint8_t dark;
+
+  uint8_t sleeping;
+  uint8_t historySample;
+  uint16_t secondsLeft;
 } SensorPacket;
 
 uint32_t packetSeq = 0;
+
+// Bei manchen Arduino-ESP32-Versionen heisst der erste Parameter wifi_tx_info_t.
+// Wenn das bei dir nicht kompiliert, sag kurz Bescheid.
+void onDataSent(const wifi_tx_info_t *tx_info, esp_now_send_status_t status) {
+  Serial.print("ESP-NOW Sendung: ");
+  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "OK" : "FEHLER");
+}
 
 // ---------------- OLED ----------------
 #define SCREEN_WIDTH 128
@@ -54,20 +67,26 @@ int buzzer = 13;
 #define DHTTYPE DHT11
 DHT dht(DHTPIN, DHTTYPE);
 
+const unsigned long DHT_INTERVAL = 2000;
+unsigned long lastDhtReadMs = 0;
+bool hasDhtValue = false;
+float lastTemp = NAN;
+float lastHum = NAN;
+
 // ---------------- NEW SENSORS ----------------
 int tiltPin = 32;
 int lightPin = 34;
 
-// Optional: nur verwenden, wenn Sensor-VCC ueber MOSFET/GPIO geschaltet ist.
-int sensorPowerPin = -1;
-
-// ---------------- SLEEP / MITTELWERT ----------------
+// ---------------- SLEEP / SENDEN ----------------
 const unsigned long MEASURE_TIME = 30000;
 const unsigned long SLEEP_TIME = 30000;
+const unsigned long SEND_INTERVAL = 1000;
 
 bool sleepMode = false;
 unsigned long phaseStart = 0;
+unsigned long lastSendMs = 0;
 
+// ---------------- MITTELWERTE ----------------
 float sumDistance = 0;
 float sumTemp = 0;
 float sumHum = 0;
@@ -88,10 +107,6 @@ float avgHum = 0;
 int avgLight = 0;
 int avgPir = LOW;
 int avgTilt = LOW;
-
-void setSensorPower(bool on) {
-  if (sensorPowerPin >= 0) digitalWrite(sensorPowerPin, on ? HIGH : LOW);
-}
 
 // ---------------- DISTANZ ----------------
 float measureDistance() {
@@ -114,6 +129,26 @@ float measureDistance() {
   return sum / 5;
 }
 
+// ---------------- DHT ----------------
+void readDhtCached(float &t, float &h) {
+  unsigned long now = millis();
+
+  if (!hasDhtValue || now - lastDhtReadMs >= DHT_INTERVAL) {
+    float newH = dht.readHumidity();
+    float newT = dht.readTemperature();
+
+    if (!isnan(newT)) lastTemp = newT;
+    if (!isnan(newH)) lastHum = newH;
+
+    if (!isnan(lastTemp) && !isnan(lastHum)) hasDhtValue = true;
+
+    lastDhtReadMs = now;
+  }
+
+  t = lastTemp;
+  h = lastHum;
+}
+
 // ---------------- RGB ----------------
 void setColor(int r, int g, int b) {
   ledcWrite(redPin, r);
@@ -124,8 +159,10 @@ void setColor(int r, int g, int b) {
 // ---------------- ESP-NOW ----------------
 void setupEspNow() {
   WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
   WiFi.disconnect();
 
+  esp_wifi_set_ps(WIFI_PS_NONE);
   esp_wifi_set_promiscuous(true);
   esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
   esp_wifi_set_promiscuous(false);
@@ -134,6 +171,8 @@ void setupEspNow() {
     Serial.println("ESP-NOW Fehler");
     while (true);
   }
+
+  esp_now_register_send_cb(onDataSent);
 
   esp_now_peer_info_t peerInfo = {};
   memcpy(peerInfo.peer_addr, receiverAddress, 6);
@@ -144,9 +183,16 @@ void setupEspNow() {
     Serial.println("ESP-NOW Peer Fehler");
     while (true);
   }
+
+  Serial.print("Sender MAC: ");
+  Serial.println(WiFi.macAddress());
+  Serial.print("ESP-NOW Kanal: ");
+  Serial.println(ESPNOW_CHANNEL);
 }
 
-void sendAveragePacket() {
+// ---------------- SENDEN ----------------
+void sendSensorPacket(bool sleeping, bool historySample, int secondsLeft,
+                      int pir, float distance, int tilt, float t, float h, int light) {
   SensorPacket packet;
 
   packet.magic = PACKET_MAGIC;
@@ -154,16 +200,25 @@ void sendAveragePacket() {
   packet.seq = packetSeq++;
   packet.uptimeMs = millis();
 
-  packet.distanceCm = avgDistance;
-  packet.temperatureC = avgTemp;
-  packet.humidityPct = avgHum;
-  packet.lightRaw = avgLight;
+  packet.distanceCm = distance;
+  packet.temperatureC = t;
+  packet.humidityPct = h;
+  packet.lightRaw = light;
 
-  packet.motion = avgPir == HIGH ? 1 : 0;
-  packet.tilt = avgTilt == HIGH ? 1 : 0;
-  packet.dark = avgLight > 3000 ? 1 : 0;
+  packet.motion = pir ? 1 : 0;
+  packet.tilt = tilt ? 1 : 0;
+  packet.dark = light > 3000 ? 1 : 0;
 
-  esp_now_send(receiverAddress, (uint8_t *)&packet, sizeof(packet));
+  packet.sleeping = sleeping ? 1 : 0;
+  packet.historySample = historySample ? 1 : 0;
+  packet.secondsLeft = secondsLeft;
+
+  esp_err_t result = esp_now_send(receiverAddress, (uint8_t *)&packet, sizeof(packet));
+
+  Serial.print("esp_now_send Paket #");
+  Serial.print(packet.seq);
+  Serial.print(": ");
+  Serial.println(result == ESP_OK ? "gestartet" : "FEHLER");
 }
 
 // ---------------- MITTELWERTE ----------------
@@ -214,8 +269,8 @@ void finalizeAverages() {
   avgHum = humSamples > 0 ? sumHum / humSamples : 0;
   avgLight = lightSamples > 0 ? sumLight / lightSamples : 0;
 
-  avgPir = pirHighSamples > totalSamples / 2 ? HIGH : LOW;
-  avgTilt = tiltHighSamples > totalSamples / 2 ? HIGH : LOW;
+  avgPir = totalSamples > 0 && pirHighSamples > totalSamples / 2 ? HIGH : LOW;
+  avgTilt = totalSamples > 0 && tiltHighSamples > totalSamples / 2 ? HIGH : LOW;
 }
 
 int remainingSeconds(unsigned long phaseTime) {
@@ -228,13 +283,6 @@ void sensorsOffForSleep() {
   noTone(buzzer);
   digitalWrite(TRIG, LOW);
   setColor(0, 0, 0);
-  setSensorPower(false);
-}
-
-void sensorsOnForAwake() {
-  setSensorPower(true);
-  if (sensorPowerPin >= 0) delay(1000);
-  dht.begin();
 }
 
 // ---------------- OLED ----------------
@@ -290,12 +338,6 @@ void setup() {
   pinMode(tiltPin, INPUT);
   pinMode(lightPin, INPUT);
 
-  if (sensorPowerPin >= 0) {
-    pinMode(sensorPowerPin, OUTPUT);
-    setSensorPower(true);
-    delay(1000);
-  }
-
   Wire.begin(21, 22);
 
   if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
@@ -316,6 +358,7 @@ void setup() {
 
   resetAverages();
   phaseStart = millis();
+  lastSendMs = millis() - SEND_INTERVAL;
 }
 
 // ---------------- LOOP ----------------
@@ -324,18 +367,20 @@ void loop() {
 
   if (!sleepMode && now - phaseStart >= MEASURE_TIME) {
     finalizeAverages();
-    sendAveragePacket();
 
     sleepMode = true;
     phaseStart = now;
     sensorsOffForSleep();
+
+    sendSensorPacket(true, true, SLEEP_TIME / 1000, avgPir, avgDistance, avgTilt, avgTemp, avgHum, avgLight);
+    lastSendMs = now;
   }
 
   if (sleepMode && now - phaseStart >= SLEEP_TIME) {
     sleepMode = false;
     phaseStart = now;
     resetAverages();
-    sensorsOnForAwake();
+    lastSendMs = now - SEND_INTERVAL;
   }
 
   if (sleepMode) {
@@ -343,6 +388,11 @@ void loop() {
     int secondsLeft = remainingSeconds(SLEEP_TIME);
 
     showOLED(avgPir, avgDistance, avgTilt, avgTemp, avgHum, avgIsDark, "Sleep", secondsLeft);
+
+    if (now - lastSendMs >= SEND_INTERVAL) {
+      sendSensorPacket(true, false, secondsLeft, avgPir, avgDistance, avgTilt, avgTemp, avgHum, avgLight);
+      lastSendMs = now;
+    }
 
     delay(100);
     return;
@@ -355,13 +405,12 @@ void loop() {
 
   float distance = measureDistance();
 
-  float h = dht.readHumidity();
-  float t = dht.readTemperature();
+  float h;
+  float t;
+  readDhtCached(t, h);
 
   int tilt = !digitalRead(tiltPin);
-
   int light = analogRead(lightPin);
-
   bool isDark = (light > 3000);
 
   addAverages(pir, distance, tilt, t, h, light);
@@ -373,6 +422,11 @@ void loop() {
   int secondsLeft = remainingSeconds(MEASURE_TIME);
 
   showOLED(pir, distance, tilt, t, h, isDark, "Awake", secondsLeft);
+
+  if (now - lastSendMs >= SEND_INTERVAL) {
+    sendSensorPacket(false, false, secondsLeft, pir, distance, tilt, t, h, light);
+    lastSendMs = now;
+  }
 
   delay(50);
 }
