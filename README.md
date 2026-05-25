@@ -7,17 +7,23 @@ Datum: 25.05.2026
 ---
 
 ## Einführung
-Dieses Projekt besteht aus zwei ESP32-Mikrocontrollern, die über ESP-NOW miteinander kommunizieren. Der Sender-ESP32 erfasst verschiedene Sensordaten, darunter Distanz, Temperatur, Luftfeuchtigkeit, Bewegung, Neigung und Helligkeit. Die aktuellen Werte werden zusätzlich auf einem OLED-Display angezeigt.
+Im Rahmen dieses Projekts wurde ein IoT-System mit zwei ESP32-Mikrocontrollern umgesetzt. Ziel war es, Sensordaten drahtlos über ESP-NOW zu übertragen und auf einem zweiten ESP32 übersichtlich darzustellen.
 
-Der Empfänger-ESP32 empfängt die Messdaten drahtlos per ESP-NOW und stellt sie über einen integrierten Webserver auf einer Webseite dar. Dort werden die aktuellen Sensordaten sowie historische Durchschnittswerte in einem einfachen Graphen angezeigt. Zusätzlich kann der aktuelle Status über einen Telegram-Bot abgefragt werden.
+Der erste ESP32 dient als Sender und erfasst verschiedene Umgebungsdaten wie Distanz, Temperatur, Luftfeuchtigkeit, Bewegung, Neigung und Helligkeit. Die Messwerte werden direkt auf einem OLED-Display angezeigt und zusätzlich per ESP-NOW an den zweiten ESP32 übertragen.
 
-Zur Energieeinsparung arbeitet der Sender in einem Mess- und Pausenzyklus: Er misst 30 Sekunden lang, bildet daraus Durchschnittswerte und wechselt anschließend für 30 Sekunden in einen Sleep-/Pause-Modus. Währenddessen werden keine neuen Sensordaten aufgenommen, die letzten Durchschnittswerte bleiben aber sichtbar.
+Der zweite ESP32 arbeitet als Empfänger. Er nimmt die Sensordaten entgegen, stellt ein Webinterface 
 
 ---
 
-## Gruppe
-- Lena Zangerl
-- Damjan Panevski
+## Projektbeschreibung
+
+Das System besteht aus einem Sender-ESP32 und einem Empfänger-ESP32. Der Sender liest die angeschlossenen Sensoren aus und sendet die Messdaten regelmäßig über ESP-NOW an den Empfänger. Während der Messphase werden aktuelle Werte laufend übertragen und am OLED-Display dargestellt.
+
+Nach einer Messdauer von 30 Sekunden bildet der Sender Durchschnittswerte aus den aufgenommenen Messungen. Anschließend wechselt er für 30 Sekunden in einen Sleep-/Pausenmodus. In dieser Zeit werden keine neuen Sensordaten aufgenommen, stattdessen werden die zuletzt berechneten Durchschnittswerte angezeigt und übertragen.
+
+Der Empfänger bleibt dauerhaft aktiv. Er empfängt die Datenpakete des Senders und stellt sie über einen eigenen Webserver zur Verfügung. Über die IP-Adresse des Empfängers kann ein Webinterface geöffnet werden, auf dem die aktuellen Messwerte angezeigt werden. Zusätzlich werden historische Durchschnittswerte gespeichert, ohne jede einzelne Messung dauerhaft abzulegen.
+
+Zur besseren Auswertung werden die historischen Daten im Webinterface als einfacher Graph dargestellt. Außerdem stellt der Empfänger eine JSON-API bereit, über die die aktuellen Sensordaten maschinenlesbar abgerufen werden können. Als Zusatzfunktion wurde ein Telegram-Bot eingebunden, der auf Anfrage den aktuellen Status des Systems zurückmeldet.
 
 ---
 
