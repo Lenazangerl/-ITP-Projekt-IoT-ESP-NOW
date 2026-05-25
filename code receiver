@@ -7,11 +7,11 @@
 #include <ArduinoJson.h>
 
 // ---------------- HIER ANPASSEN ----------------
-const char* WIFI_SSID = "SZU-Heim";
-const char* WIFI_PASS = "EZcq3uks2jhK8PFR";
+const char* WIFI_SSID = "WLAN-Name";
+const char* WIFI_PASS = "WLAN-Passwort";
 
-#define BOT_TOKEN "8933340130:AAGfrroDn2pXxCCDYH6d6VE8MxEs8EpdOY8"
-#define CHAT_ID "8765169403"
+#define BOT_TOKEN "BOT-Token"
+#define CHAT_ID "USER-ID"
 
 // Wird benutzt, falls WLAN nicht verbunden wird.
 #define FALLBACK_ESPNOW_CHANNEL 1
