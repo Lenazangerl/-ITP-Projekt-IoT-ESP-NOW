@@ -29,10 +29,28 @@ Zur besseren Auswertung werden die historischen Daten im Webinterface als einfac
 
 ## Projektziel
 
-Ziel dieses Projekts war es, zwei ESP32-Mikrocontroller zu einer IoT-Station zu verbinden.
+Ziel dieses Projekts ist die Umsetzung eines IoT-Systems mit zwei ESP32-Mikrocontrollern. Sensordaten sollen auf einem ESP32 erfasst und anschließend drahtlos über ESP-NOW an einen zweiten ESP32 übertragen werden.
 
-Ein ESP32 (Sender) misst verschiedene Umweltdaten und sendet diese über ESP-NOW an einen zweiten ESP32 (Receiver).  
-Der Receiver verarbeitet die Daten und stellt sie über ein Webinterface im Browser dar.
+Der zweite ESP32 soll die empfangenen Daten über ein Webinterface visualisieren. Zusätzlich sollen historische Durchschnittswerte in einem einfachen Graphen dargestellt werden. Der Sender soll außerdem einen Mess- und Pausenmodus verwenden, um nicht dauerhaft Messungen durchzuführen.
+
+---
+
+## Arbeitsschritte
+
+1. Auswahl und Anschluss der Sensoren am Sender-ESP32
+2. Einrichten des OLED-Displays zur Anzeige der aktuellen Messwerte
+3. Implementierung der Sensordatenerfassung am Sender
+4. Bildung von Durchschnittswerten über eine Messphase von 30 Sekunden
+5. Umsetzung eines Sleep-/Pausenmodus nach jeder Messphase
+6. Einrichtung der ESP-NOW-Kommunikation zwischen Sender und Empfänger
+7. Implementierung des Empfängers zur Verarbeitung der Datenpakete
+8. Erstellung eines Webservers auf dem Empfänger-ESP32
+9. Gestaltung eines einfachen Webinterfaces zur Anzeige der aktuellen Messwerte
+10. Speicherung historischer Durchschnittswerte im Arbeitsspeicher
+11. Darstellung der historischen Daten in einem einfachen Graphen
+12. Bereitstellung einer JSON-API für die aktuellen Sensordaten
+13. Integration eines Telegram-Bots zur Statusabfrage
+14. Testen der Kommunikation, Anzeige und Bot-Funktion
 
 ---
 
@@ -40,209 +58,84 @@ Der Receiver verarbeitet die Daten und stellt sie über ein Webinterface im Brow
 
 ### GK (Grundkompetenzen)
 
-- **WiFi-Manager:** Automatische Verbindung mit einem WLAN ohne festen Code  
-- **Sleep-Mode:** Energiesparmodus zwischen den Messungen  
-- **LDR (Helligkeitssensor):** Erkennt die Lichtstärke (hell/dunkel)  
-- **Tilt B15 Sensor:** Erkennt Neigung oder Bewegung des Geräts  
-
----
+- **ESP-NOW-Kommunikation:** Drahtlose Übertragung der Sensordaten zwischen zwei ESP32-Mikrocontrollern
+- **Webserver:** Der Empfänger stellt ein Webinterface über seine IP-Adresse bereit
+- **Webinterface:** Anzeige der aktuellen Messwerte in einer übersichtlichen Webseite
+- **Sleep-/Pausenmodus:** Der Sender misst 30 Sekunden lang und pausiert anschließend 30 Sekunden
+- **Helligkeitssensor (LDR):** Erfassung der Umgebungshelligkeit und Einteilung in hell oder dunkel
+- **Tilt-Sensor:** Erkennung einer Neigung bzw. Lageänderung des Geräts
+- **OLED-Display:** Anzeige der aktuellen Werte und des aktuellen Zustands direkt am Sender
 
 ### EK (Erweiterte Kompetenzen)
 
-- **PIR Bewegungssensor:** Erkennt Bewegungen im Raum und löst einen Alarm aus  
-- **Ultraschallsensor:** Misst die Entfernung zu Objekten  
-- **DHT11 Sensor:** Misst Temperatur und Luftfeuchtigkeit  
-- **RGB LED:** Zeigt Zustände durch Farben (z. B. grün, orange, rot)  
-- **Buzzer:** Gibt akustische Signale bei Ereignissen aus  
-- **OLED Display:** Zeigt alle Messwerte übersichtlich an  
+- **PIR-Bewegungssensor:** Erkennt Bewegungen im Raum und löst bei Bewegung den Buzzer aus
+- **Ultraschallsensor HC-SR04:** Misst die Entfernung zu Objekten in Zentimetern
+- **DHT11-Sensor:** Misst Temperatur und Luftfeuchtigkeit
+- **RGB-LED:** Visualisiert die Distanz durch verschiedene Farben, z. B. grün, orange und rot
+- **Buzzer:** Gibt ein akustisches Signal aus, sobald Bewegung erkannt wird
+- **JSON-API:** Bereitstellung der aktuellen Sensordaten in maschinenlesbarer Form
+- **Telegram-Bot:** Abfrage des aktuellen Sensorstatus über Telegram mit `/status`
+- **einfacher Graph / Mittelwertbildung:** Berechnung von Durchschnittswerten aus den Messdaten einer Messphase und darstellung historischer Durchschnittswerte im Webinterface
 
 ---
 
 ## Systemarchitektur
 
-Die Sensoren erfassen verschiedene Umweltdaten (Bewegung, Temperatur, Luftfeuchtigkeit, Licht, Abstand und Neigung).
+Das System besteht aus zwei getrennten ESP32-Mikrocontrollern: einem Sender und einem Empfänger.
 
-PIR Bewegungssensor + Ultraschallsensor + DHT11 + LDR + Tilt B15 + OLED Display + RGB LED  
-→ ESP32 Sender (Sensordaten erfassen & verarbeiten)  
-→ ESP-NOW (drahtlose Kommunikation ohne Router)  
-→ ESP32 Receiver (Daten empfangen & weiterverarbeiten)  
-→ Webserver (Anzeige der Daten im Browser in Echtzeit)
+Der Sender-ESP32 ist mit den Sensoren und einem OLED-Display verbunden. Er misst Distanz, Temperatur, Luftfeuchtigkeit, Bewegung, Neigung und Helligkeit. Während der Messphase werden die aktuellen Werte direkt am OLED-Display angezeigt und per ESP-NOW an den Empfänger gesendet.
+
+Der Empfänger-ESP32 bleibt dauerhaft aktiv. Er empfängt die Sensordaten über ESP-NOW und stellt sie über einen Webserver bereit. Über die IP-Adresse des Empfängers kann ein Webinterface geöffnet werden, auf dem aktuelle Messwerte und historische Durchschnittswerte angezeigt werden.
+
+Zusätzlich ist auf dem Empfänger ein Telegram-Bot integriert. Über diesen kann der aktuelle Sensorstatus per Telegram abgefragt werden.
 
 ---
 
 ## Verwendete Komponenten
 
-| Komponente                 | Anzahl | Beschreibung |
-|---------------------------|:------:|--------------|
-| ESP32 Dev Board           | 2      | Hauptcontroller |
-| DHT11 Sensor              | 1      | Temperatur- & Luftfeuchtigkeitsmessung |
+### Sender-ESP32
+
+| Komponente                 | Anzahl | Funktion |
+|---------------------------|:------:|----------|
+| ESP32 Dev Board           | 1      | Steuerung, Messung und ESP-NOW-Senden |
+| DHT11 Sensor              | 1      | Temperatur und Luftfeuchtigkeit |
 | HC-SR04 Ultraschallsensor | 1      | Abstandsmessung |
 | PIR Bewegungssensor       | 1      | Bewegungserkennung |
-| LDR (Helligkeitssensor)   | 1      | Lichtmessung (analog) |
-| Tilt B15 Sensor           | 1      | Neigungserkennung (digital) |
+| LDR                       | 1      | Helligkeitsmessung |
+| Tilt B15 Sensor           | 1      | Neigungserkennung |
 | OLED Display 128x64       | 1      | Anzeige der Messwerte |
-| RGB LED                   | 1      | Statusanzeige (Farben) |
+| RGB LED                   | 1      | Optische Statusanzeige |
 | Buzzer                    | 1      | Akustisches Signal |
-| Breadboard                | 1      | Steckbrett für Aufbau |
-| Jumper Kabel              | mehrere| Verbindungen zwischen Bauteilen |
-| USB Kabel                 | 2      | Stromversorgung |
+| Breadboard                | 1      | Schaltungsaufbau |
+| Jumper Kabel              | mehrere| Verbindungen |
+| USB Kabel                 | 1      | Stromversorgung und Programmierung |
+
+### Empfänger-ESP32
+
+| Komponente        | Anzahl | Funktion |
+|------------------|:------:|----------|
+| ESP32 Dev Board  | 1      | ESP-NOW-Empfang, Webserver und Telegram-Bot |
+| USB Kabel        | 1      | Stromversorgung und Programmierung |
 
 ---
 
+## Funktionshinweise
+
+Der Sender-ESP32 erfasst die Sensordaten und zeigt sie direkt am OLED-Display an. Zusätzlich sendet er die Werte per ESP-NOW an den Empfänger-ESP32.
+
+Der Buzzer wird aktiviert, sobald der PIR-Sensor eine Bewegung erkennt. Dadurch wird eine erkannte Bewegung nicht nur im Display und Webinterface angezeigt, sondern auch akustisch signalisiert.
+
+Die RGB-LED visualisiert die gemessene Distanz des Ultraschallsensors:
+
+- **Grün:** Objekt ist weit entfernt
+- **Orange/Gelb:** Objekt befindet sich in mittlerer Entfernung
+- **Rot:** Objekt ist sehr nah
+
+Der Sender arbeitet in einem Mess- und Pausenzyklus. Während der Messphase werden aktuelle Werte aufgenommen und angezeigt. Nach 30 Sekunden werden Durchschnittswerte berechnet. In der anschließenden Pausenphase werden keine neuen Messwerte aufgenommen, sondern die zuletzt berechneten Durchschnittswerte angezeigt und übertragen.
+
+Der Empfänger-ESP32 bleibt dauerhaft aktiv. Er empfängt die Daten, stellt sie im Webinterface dar und beantwortet Telegram-Anfragen wie `/status`.
+
+---
+## Sender Code
 ```cpp
-#include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
-#include "DHT.h"
-
-// ---------------- OLED ----------------
-#define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
-
-// ---------------- Ultraschall ----------------
-#define TRIG 5
-#define ECHO 18
-
-// ---------------- RGB ----------------
-int redPin = 25;
-int greenPin = 26;
-int bluePin = 27;
-
-// ---------------- PIR + Buzzer ----------------
-int pirPin = 2;
-int buzzer = 13;
-
-// ---------------- DHT11 ----------------
-#define DHTPIN 33
-#define DHTTYPE DHT11
-DHT dht(DHTPIN, DHTTYPE);
-
-// ---------------- NEW SENSORS ----------------
-int tiltPin = 32;
-int lightPin = 34;
-
-// ---------------- DISTANZ ----------------
-float measureDistance() {
-
-  float sum = 0;
-
-  for (int i = 0; i < 5; i++) {
-
-    digitalWrite(TRIG, LOW);
-    delayMicroseconds(5);
-    digitalWrite(TRIG, HIGH);
-    delayMicroseconds(10);
-    digitalWrite(TRIG, LOW);
-
-    long duration = pulseIn(ECHO, HIGH, 30000);
-    float d = duration * 0.034 / 2;
-
-    sum += d;
-    delay(10);
-  }
-
-  return sum / 5;
-}
-
-// ---------------- RGB ----------------
-void setColor(int r, int g, int b) {
-  ledcWrite(redPin, r);
-  ledcWrite(greenPin, g);
-  ledcWrite(bluePin, b);
-}
-
-// ---------------- SETUP ----------------
-void setup() {
-
-  Serial.begin(115200);
-
-  pinMode(TRIG, OUTPUT);
-  pinMode(ECHO, INPUT);
-
-  pinMode(pirPin, INPUT);
-  pinMode(buzzer, OUTPUT);
-
-  pinMode(tiltPin, INPUT);
-
-  Wire.begin(21, 22);
-
-  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-    Serial.println("OLED Fehler");
-    while (true);
-  }
-
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
-
-  ledcAttach(redPin, 5000, 8);
-  ledcAttach(greenPin, 5000, 8);
-  ledcAttach(bluePin, 5000, 8);
-
-  dht.begin();
-}
-
-// ---------------- LOOP ----------------
-void loop() {
-
-  // -------- PIR --------
-  int pir = digitalRead(pirPin);
-
-  if (pir == HIGH) tone(buzzer, 1200);
-  else noTone(buzzer);
-
-  // -------- DISTANZ --------
-  float distance = measureDistance();
-
-  // -------- DHT11 --------
-  float h = dht.readHumidity();
-  float t = dht.readTemperature();
-  t = round(t * 10) / 10.0;
-
-  // -------- TILT (UMGEDREHT) --------
-  int tilt = digitalRead(tiltPin);
-
-  // -------- LIGHT (4095 = dunkel) --------
-  int light = analogRead(lightPin);
-
-  bool isDark = (light > 3000);
-
-  // -------- RGB --------
-  if (distance > 0 && distance < 10) setColor(255, 0, 0);
-  else if (distance < 25) setColor(255, 120, 0);
-  else setColor(0, 255, 0);
-
-
-// -------- OLED --------
-display.clearDisplay();
-
-// Line 1: Bewegung + Tilt
-display.setCursor(0, 0);
-display.print("Move:");
-display.print(pir ? "Yes " : "No ");
-
-display.print("   Incl:");
-display.println(tilt ? "Yes" : "No");
-
-// Line 2: Distanz + Temperatur
-display.setCursor(0, 12);
-display.print("Dist:");
-display.print(distance);
-display.print(" Temp:");
-display.print(t);
-display.println("C");
-
-// Line 3: Feuchte + Licht
-display.setCursor(0, 24);
-display.print("Hum:");
-display.print(h);
-display.print("% Light:");
-
-if (isDark) display.println("Dark");
-else display.println("Bright");
-
-display.display();
-
-  delay(50);
-}
+// Code 
