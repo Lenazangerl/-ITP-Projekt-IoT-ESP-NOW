@@ -6,8 +6,12 @@ Datum: 25.05.2026
 
 ---
 
-## Fach
-Systemtechnik (SYT)
+## Einführung
+Dieses Projekt besteht aus zwei ESP32-Mikrocontrollern, die über ESP-NOW miteinander kommunizieren. Der Sender-ESP32 erfasst verschiedene Sensordaten, darunter Distanz, Temperatur, Luftfeuchtigkeit, Bewegung, Neigung und Helligkeit. Die aktuellen Werte werden zusätzlich auf einem OLED-Display angezeigt.
+
+Der Empfänger-ESP32 empfängt die Messdaten drahtlos per ESP-NOW und stellt sie über einen integrierten Webserver auf einer Webseite dar. Dort werden die aktuellen Sensordaten sowie historische Durchschnittswerte in einem einfachen Graphen angezeigt. Zusätzlich kann der aktuelle Status über einen Telegram-Bot abgefragt werden.
+
+Zur Energieeinsparung arbeitet der Sender in einem Mess- und Pausenzyklus: Er misst 30 Sekunden lang, bildet daraus Durchschnittswerte und wechselt anschließend für 30 Sekunden in einen Sleep-/Pause-Modus. Währenddessen werden keine neuen Sensordaten aufgenommen, die letzten Durchschnittswerte bleiben aber sichtbar.
 
 ---
 
