@@ -136,6 +136,14 @@ Der Sender arbeitet in einem Mess- und Pausenzyklus. Während der Messphase werd
 Der Empfänger-ESP32 bleibt dauerhaft aktiv. Er empfängt die Daten, stellt sie im Webinterface dar und beantwortet Telegram-Anfragen wie `/status`.
 
 ---
+
+## Schaltungsplan
+
+Der Schaltungsplan zeigt den Aufbau des Projekts mit dem Sender-ESP32 und den angeschlossenen Sensoren bzw. Aktoren. Dargestellt sind die Verbindungen zum DHT11-Sensor, Ultraschallsensor, PIR-Sensor, LDR, Tilt-Sensor, OLED-Display, RGB-LED und Buzzer.
+
+![Schaltungsplan](img/Schaltung.png)
+
+---
 ## Sender Code
 ```cpp
 // Code 
