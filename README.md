@@ -1,6 +1,8 @@
 # ESP32 IoT-Station mit ESP-NOW
 
 **SYT ITP Projekt – ESP32 IoT Station mit Webserver, WiFi-Manager und Sleep-Mode**
+Gruppenmitglieder: Lena Zangerl, Damjan Panevski
+Datum: 25.05.2026
 
 ---
 
