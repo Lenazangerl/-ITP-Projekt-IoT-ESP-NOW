@@ -327,4 +327,10 @@ Der Empfänger-Code befindet sich in der Datei:
 Code/Empfaenger/EmpfaengerCode.ino
 ```
 
+### Quellen
+
+- ESP32 with DHT11/DHT22 Temperature and Humidity Sensor: https://randomnerdtutorials.com/esp32-dht11-dht22-temperature-humidity-sensor-arduino-ide/
+- Ultraschallsensor Erklärung: https://components101.com/sensors/ultrasonic-sensor-working-pinout-datasheet  
+- Bewegungssensor Funktionsweise: https://lastminuteengineers.com/pir-sensor-arduino-tutorial/  
+- OLED Display (SSD1306) Infos: https://randomnerdtutorials.com/esp32-ssd1306-oled-display-arduino-ide/
 
