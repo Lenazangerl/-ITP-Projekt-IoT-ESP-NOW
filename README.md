@@ -56,12 +56,13 @@ Der zweite ESP32 soll die empfangenen Daten über ein Webinterface visualisieren
 
 ---
 
-## 4.1 Komponenten
+## 4.1 Verwendete Komponenten
 
-Software
+### Software
 
-Libraries:
-**WiFi.h**  
+**Libraries:**
+
+- **WiFi.h**  
   Wird verwendet, um den ESP32 mit einem WLAN zu verbinden und den Access Point für das Webinterface bereitzustellen.
 
 - **WiFiClientSecure.h**  
@@ -84,6 +85,31 @@ Libraries:
 
 - **ArduinoJson.h**  
   Wird von der Telegram-Bot-Library benötigt und kann außerdem zur Verarbeitung von JSON-Daten verwendet werden.
+
+### Hardware
+**Sender-ESP32**
+
+| Komponente                 | Anzahl | Funktion |
+|---------------------------|:------:|----------|
+| ESP32 Dev Board           | 1      | Steuerung, Messung und ESP-NOW-Senden |
+| DHT11 Sensor              | 1      | Temperatur und Luftfeuchtigkeit |
+| HC-SR04 Ultraschallsensor | 1      | Abstandsmessung |
+| PIR Bewegungssensor       | 1      | Bewegungserkennung |
+| LDR                       | 1      | Helligkeitsmessung |
+| Tilt B15 Sensor           | 1      | Neigungserkennung |
+| OLED Display 128x64       | 1      | Anzeige der Messwerte |
+| RGB LED                   | 1      | Optische Statusanzeige |
+| Buzzer                    | 1      | Akustisches Signal |
+| Breadboard                | 1      | Schaltungsaufbau |
+| Jumper Kabel              | mehrere| Verbindungen |
+| USB Kabel                 | 1      | Stromversorgung und Programmierung |
+
+**Empfänger-ESP32**
+
+| Komponente        | Anzahl | Funktion |
+|------------------|:------:|----------|
+| ESP32 Dev Board  | 1      | ESP-NOW-Empfang, Webserver und Telegram-Bot |
+| USB Kabel        | 1      | Stromversorgung und Programmierung |
 
 ---
 
@@ -124,33 +150,6 @@ Zusätzlich ist auf dem Empfänger ein Telegram-Bot integriert. Über diesen kan
 
 ---
 
-## Verwendete Komponenten
-
-### Sender-ESP32
-
-| Komponente                 | Anzahl | Funktion |
-|---------------------------|:------:|----------|
-| ESP32 Dev Board           | 1      | Steuerung, Messung und ESP-NOW-Senden |
-| DHT11 Sensor              | 1      | Temperatur und Luftfeuchtigkeit |
-| HC-SR04 Ultraschallsensor | 1      | Abstandsmessung |
-| PIR Bewegungssensor       | 1      | Bewegungserkennung |
-| LDR                       | 1      | Helligkeitsmessung |
-| Tilt B15 Sensor           | 1      | Neigungserkennung |
-| OLED Display 128x64       | 1      | Anzeige der Messwerte |
-| RGB LED                   | 1      | Optische Statusanzeige |
-| Buzzer                    | 1      | Akustisches Signal |
-| Breadboard                | 1      | Schaltungsaufbau |
-| Jumper Kabel              | mehrere| Verbindungen |
-| USB Kabel                 | 1      | Stromversorgung und Programmierung |
-
-### Empfänger-ESP32
-
-| Komponente        | Anzahl | Funktion |
-|------------------|:------:|----------|
-| ESP32 Dev Board  | 1      | ESP-NOW-Empfang, Webserver und Telegram-Bot |
-| USB Kabel        | 1      | Stromversorgung und Programmierung |
-
----
 
 ## Funktionshinweise
 
