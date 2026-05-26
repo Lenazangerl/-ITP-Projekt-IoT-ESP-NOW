@@ -117,77 +117,94 @@ Der zweite ESP32 soll die empfangenen Daten über ein Webinterface visualisieren
 
 ### Sensoren 
 
-**Neigungssensor (Tilt B15)**
-VCC -> 5V
+**Neigungssensor (Tilt B15)**  
 
-GND -> GND
+VCC -> 5V  
 
-OUT -> GPIO 32
+GND -> GND  
 
-Der Tilt-Sensor benötigt einen digitalen Eingang. Je nach Modul kann ein Pullup- oder Pulldown-Widerstand nötig sein. GPIO 32 ist dafür geeignet.
+OUT -> GPIO 32  
 
-**Helligkeitssensor (LDR)**
+Der Tilt-Sensor benötigt einen digitalen Eingang. Je nach Modul kann ein Pullup- oder Pulldown-Widerstand nötig sein. GPIO 32 ist dafür geeignet.  
 
-VCC -> 3.3V
-GND -> GND
-DO -> GPIO 34
+**Helligkeitssensor (LDR)**  
 
-Ein LDR wird über einen Spannungsteiler an einem analogen Eingang gemessen. Geeignet sind z. B. GPIO 34, 35, 36 oder 39. Diese Pins sind nur Eingänge und daher gut für Sensoren geeignet
+VCC -> 3.3V  
 
-**Temperatur- und Luftfeuchtigkeitssensor (DHT11)**
+GND -> GND  
 
-VCC -> 3.3V
-GND -> GND
-SIGNAL -> GPIO 33
+DO -> GPIO 34  
 
-Der DHT11 benötigt einen digitalen GPIO als Datenleitung. Geeignet sind z. B. GPIO 33, 32, 25, 26 oder 27. Der Sensor sollte nicht zu schnell ausgelesen werden.
+Ein LDR wird über einen Spannungsteiler an einem analogen Eingang gemessen. Geeignet sind z. B. GPIO 34, 35, 36 oder 39. Diese Pins sind nur Eingänge und daher gut für Sensoren geeignet  
 
-**Bewegungssensor (PIR)**
+**Temperatur- und Luftfeuchtigkeitssensor (DHT11)**  
 
-VCC -> 5V
-GND -> GND
-OUT -> GPIO 2
+VCC -> 3.3V  
 
-Der PIR-Sensor benötigt einen digitalen Eingang. GPIO 2 kann beim Starten des ESP32 problematisch sein, weil er ein Boot-Pin ist. Besser sind z. B. GPIO 14, 16, 17, 19 oder 23.
+GND -> GND  
 
-**Ultraschallsensor (HC-SR04)**
+SIGNAL -> GPIO 33  
 
-VCC -> 5V
-GND -> GND
-TRIG -> GPIO 5
-ECHO -> GPIO 18
+Der DHT11 benötigt einen digitalen GPIO als Datenleitung. Geeignet sind z. B. GPIO 33, 32, 25, 26 oder 27. Der Sensor sollte nicht zu schnell ausgelesen werden.  
 
-Der Sensor benötigt zwei digitale Pins: TRIG als Ausgang und ECHO als Eingang. Wichtig: Der ECHO-Pin kann 5 V ausgeben, der ESP32 verträgt aber nur 3,3 V. Deshalb sollte ein Spannungsteiler verwendet werden.
+**Bewegungssensor (PIR)**  
 
-### Aktoren
+VCC -> 5V  
 
-**Mehrfarbige LED (RGB LED)**
+GND -> GND  
 
-Kathode -> GND
-ROT (Anode) -> 3.3V GPIO 25
-GRÜN (Anode) -> 3.3V GPIO 26
-BLAU (Anode) -> 3.3V GPIO 27
+OUT -> GPIO 2  
 
-Eine RGB-LED benötigt drei PWM-fähige Ausgänge, einen für Rot, Grün und Blau. Im Projekt werden GPIO 25, 26 und 27 verwendet. Für jede Farbe sollte ein Vorwiderstand verwendet werden. Zusätzlich braucht man für alle kurzen Beine einrn 220 OHM Wiederstand, welcher seriell angehängt wird.
+Der PIR-Sensor benötigt einen digitalen Eingang. GPIO 2 kann beim Starten des ESP32 problematisch sein, weil er ein Boot-Pin ist. Besser sind z. B. GPIO 14, 16, 17, 19 oder 23.  
 
-**Buzzer**
+**Ultraschallsensor (HC-SR04)**  
 
-VCC -> 3.3V GPIO 13
-GND -> GND
+VCC -> 5V  
 
-Der Buzzer benötigt einen digitalen Ausgang. Für Töne mit tone() eignet sich ein normaler GPIO, z. B. GPIO 13. Bei 
-größeren Buzzern sollte ein Transistor verwendet werden.
+GND -> GND  
 
-**OLED Display**
+TRIG -> GPIO 5  
 
-VCC -> 3.3V
-GND -> GND
-SCL -> GPIO 22
-SDA -> GPIO 21
+ECHO -> GPIO 18  
 
-Das Display wird über I2C angeschlossen. Beim ESP32 werden häufig GPIO 21 als SDA und GPIO 22 als SCL verwendet. Die I2C-Adresse ist meistens 0x3C.
+Der Sensor benötigt zwei digitale Pins: TRIG als Ausgang und ECHO als Eingang. Wichtig: Der ECHO-Pin kann 5 V ausgeben, der ESP32 verträgt aber nur 3,3 V. Deshalb sollte ein Spannungsteiler verwendet werden.  
 
-### Hinweiß
+### Aktoren  
+
+**Mehrfarbige LED (RGB LED)**  
+
+Kathode -> GND  
+
+ROT (Anode) -> 3.3V GPIO 25  
+
+GRÜN (Anode) -> 3.3V GPIO 26  
+
+BLAU (Anode) -> 3.3V GPIO 27  
+
+Eine RGB-LED benötigt drei PWM-fähige Ausgänge, einen für Rot, Grün und Blau. Im Projekt werden GPIO 25, 26 und 27 verwendet. Für jede Farbe sollte ein Vorwiderstand verwendet werden. Zusätzlich braucht man für alle kurzen Beine einrn 220 OHM Wiederstand, welcher seriell angehängt wird.  
+
+**Buzzer**  
+
+VCC -> 3.3V GPIO 13  
+
+GND -> GND  
+
+Der Buzzer benötigt einen digitalen Ausgang. Für Töne mit tone() eignet sich ein normaler GPIO, z. B. GPIO 13. Bei  
+größeren Buzzern sollte ein Transistor verwendet werden.  
+
+**OLED Display**  
+
+VCC -> 3.3V  
+
+GND -> GND  
+
+SCL -> GPIO 22  
+
+SDA -> GPIO 21  
+
+Das Display wird über I2C angeschlossen. Beim ESP32 werden häufig GPIO 21 als SDA und GPIO 22 als SCL verwendet. Die I2C-Adresse ist meistens 0x3C.  
+
+### Hinweiß  
 
 Alle GND-Anschlüsse der Sensoren, Aktoren und des ESP32 müssen miteinander verbunden sein.
 
