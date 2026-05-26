@@ -1,3 +1,4 @@
+
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -178,13 +179,14 @@ int avgPir = LOW;
 int avgTilt = LOW;
 
 // ================================================================
-// ULTRASCHALLMESSUNG
+// ULTRASCHALLMESSUNG (GEÄNDERT: FILTERT EINZELNE FEHLMESSUNGEN)
 // ================================================================
 
 float measureDistance() {
   float sum = 0;
+  int validSamples = 0;
 
-  // Mehrere Messungen werden gemittelt, damit Ausreisser reduziert werden.
+  // Mehrere Messungen werden durchlaufen
   for (int i = 0; i < 5; i++) {
     digitalWrite(TRIG, LOW);
     delayMicroseconds(5);
@@ -198,11 +200,21 @@ float measureDistance() {
     // Umrechnung in cm
     float d = duration * 0.034 / 2;
 
-    sum += d;
+    // GEÄNDERT: Nur Werte über 0 sind gültig und fließen in den Durchschnitt ein
+    if (d > 0) {
+      sum += d;
+      validSamples++;
+    }
     delay(10);
   }
 
-  return sum / 5;
+  // Wenn KEINE einzige Messung gültig war (Sensor abgesteckt), liefere 0 für BLAU
+  if (validSamples == 0) {
+    return 0;
+  }
+
+  // Ansonsten teile nur durch die Anzahl der wirklich erfolgreichen Messungen
+  return sum / validSamples;
 }
 
 // ================================================================
@@ -542,7 +554,7 @@ void loop() {
   }
 
   // ------------------------------------------------------------
-  // Verhalten waehrend der Pausenphase
+  // Verhalten waeharem der Pausenphase
   // ------------------------------------------------------------
   if (sleepMode) {
     // NEU: Schwellenwert auf 4050 angepasst
@@ -592,7 +604,7 @@ void loop() {
   addAverages(pir, distance, tilt, t, h, light);
 
   // RGB LED zeigt den Zustand an.
-  // NEU: Wenn der Ultraschallsensor disconnected/0 ist, schaltet die LED auf BLAU
+  // Wenn der Ultraschallsensor disconnected/0 ist, schaltet die LED auf BLAU
   if (distance <= 0) {
     setColor(0, 0, 255); 
   } 
