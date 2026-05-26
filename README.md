@@ -203,7 +203,7 @@ Zum Testen wird das Webinterface des Empfängers geöffnet und kontrolliert, ob 
 
 ---
 
-## Umgesetzte Funktionen
+## 5. Umgesetzte Funktionen
 
 ### GK (Grundkompetenzen)
 
@@ -229,7 +229,7 @@ Zum Testen wird das Webinterface des Empfängers geöffnet und kontrolliert, ob 
 ---
 
 
-## Funktionshinweise
+## 6. Funktionshinweise
 
 Der Sender-ESP32 erfasst die Sensordaten und zeigt sie direkt am OLED-Display an. Zusätzlich sendet er die Werte per ESP-NOW an den Empfänger-ESP32.
 
@@ -247,13 +247,65 @@ Der Empfänger-ESP32 bleibt dauerhaft aktiv. Er empfängt die Daten, stellt sie 
 
 ---
 
-## Schaltungsplan
+## 7. Sleep-Mode-Protokoll
+
+Der Sender-ESP32 arbeitet in einem festen Mess- und Pausenzyklus. Ziel ist es, nicht dauerhaft neue Sensordaten aufzunehmen, sondern Messphasen und Ruhephasen klar voneinander zu trennen.
+
+Der Empfänger-ESP32 bleibt dauerhaft aktiv. Dadurch kann er jederzeit ESP-NOW-Daten empfangen und das Webinterface sowie den Telegram-Bot bereitstellen. Es geht also keine Messung verloren, da nur der Sender in den Pausenmodus wechselt.
+
+Ablauf des Zyklus:
+
+Messphase: 30 Sekunden
+Der Sender liest alle Sensoren aus und zeigt die aktuellen Werte am OLED-Display an. Zusätzlich werden Live-Werte per ESP-NOW an den Empfänger gesendet.
+
+Mittelwertbildung
+Nach Ablauf der 30 Sekunden berechnet der Sender Durchschnittswerte aus den aufgenommenen Messungen. Diese Durchschnittswerte werden an den Empfänger gesendet und für den Graphen verwendet.
+
+Pausenphase: 30 Sekunden
+Während der Pause werden keine neuen Sensordaten aufgenommen. Der Buzzer, die RGB-LED und der Ultraschall-Trigger werden deaktiviert. Am OLED-Display werden die zuletzt berechneten Durchschnittswerte und ein Countdown angezeigt.
+
+Wiederaufnahme der Messung
+Nach Ablauf der Pausenphase startet automatisch eine neue Messphase. Die alten Messwerte werden zurückgesetzt und neue Sensordaten werden aufgenommen.
+
+Synchronisation:
+
+Der Empfänger muss nicht schlafen, sondern bleibt durchgehend aktiv. Dadurch kann er sowohl Live-Werte während der Messphase als auch Durchschnittswerte und Statusdaten während der Pausenphase empfangen. Der Sender überträgt zusätzlich den aktuellen Zustand (Awake oder Sleep) und die verbleibenden Sekunden bis zum nächsten Wechsel. Dadurch kann der Empfänger den Zustand korrekt im Webinterface anzeigen.
+
+Zeitplan:
+
+0 bis 30 Sekunden: Messphase (Awake)
+bei 30 Sekunden: Durchschnittswerte werden berechnet und gesendet
+30 bis 60 Sekunden: Pausenphase (Sleep)
+bei 60 Sekunden: neue Messphase beginnt
+Hinweis:
+
+Im Projekt wird ein softwarebasierter Sleep-/Pausenmodus verwendet. Der ESP32 wird dabei nicht vollständig in den Deep-Sleep versetzt, damit OLED-Anzeige, Countdown und ESP-NOW-Statusübertragung weiterhin funktionieren. Die Messungen werden während der Pausenphase gestoppt, wodurch der Energieverbrauch gegenüber dauerhaftem Messen reduziert wird.
+
+---
+
+## 8. Schaltungsplan
 
 Der Schaltungsplan zeigt den Aufbau des Projekts mit dem Sender-ESP32 und den angeschlossenen Sensoren bzw. Aktoren. Dargestellt sind die Verbindungen zum DHT11-Sensor, Ultraschallsensor, PIR-Sensor, LDR, Tilt-Sensor, OLED-Display, RGB-LED und Buzzer.
 
 ![Schaltungsplan](img/Schaltung.png)
 
 ---
-## Sender Code
-```cpp
-// Code 
+## 9. Code
+
+### Sender Code
+
+Der Sender-Code befindet sich in der Datei:
+
+```text
+Code/sender.ino
+```
+
+### Empfänger Code
+
+Der Empfänger-Code befindet sich in der Datei:
+
+```text
+Code/empfaenger.ino
+```
+
+
