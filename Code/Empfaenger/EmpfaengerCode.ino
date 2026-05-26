@@ -68,6 +68,11 @@ SensorPacket pendingPacket;
 volatile bool hasPendingPacket = false;
 portMUX_TYPE packetMux = portMUX_INITIALIZER_UNLOCKED;
 
+// NEU: Variablen um die Sender-MAC dynamisch zu speichern und den LED-Zustand zu tracken
+uint8_t senderMacAddress[6] = {0};
+bool senderMacKnown = false;
+bool webLedState = true; 
+
 // ---------------- HISTORY ----------------
 const int HOUR_BUCKETS = 12;
 const int WEEK_BUCKETS = 168;
@@ -98,7 +103,7 @@ WebServer server(80);
 WiFiClientSecure secureClient;
 UniversalTelegramBot bot(BOT_TOKEN, secureClient);
 
-// ---------------- HTML ----------------
+// ---------------- HTML (ERWEITERT UM DEN LED-SCHALTER) ----------------
 const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <!doctype html>
 <html lang="de">
@@ -108,7 +113,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <title>ESP32 Sensordaten</title>
 <style>
 body{margin:0;font-family:Arial,sans-serif;background:#f4f6f8;color:#17202a}
-header{background:#1f2937;color:white;padding:16px 20px}
+header{background:#1f2937;color:white;padding:16px 20px;display:flex;justify-content:space-between;align-items:center}
 main{max-width:1000px;margin:auto;padding:18px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
 .card{background:white;border:1px solid #d9e0e7;border-radius:8px;padding:14px}
@@ -121,10 +126,17 @@ canvas{width:100%;height:320px;border:1px solid #e1e7ee;border-radius:6px}
 .small{font-size:13px;color:#607080;margin-top:8px}
 .awake{color:#15803d}
 .sleep{color:#2563eb}
+.btn{padding:10px 16px;border:none;border-radius:6px;font-weight:700;cursor:pointer;color:white}
+.btn-on{background:#16a34a}.btn-off{background:#dc2626}
 </style>
 </head>
 <body>
-<header><h2>ESP32 Sensordaten</h2></header>
+<header>
+<h2>ESP32 Sensordaten</h2>
+<div>
+<button id="ledBtn" class="btn btn-on" onclick="toggleLed()">Status-LED: AN</button>
+</div>
+</header>
 <main>
 <div class="grid">
 <div class="card"><div class="label">Status</div><div class="value" id="mode">-</div></div>
@@ -189,11 +201,34 @@ async function loadCurrent(){
   document.getElementById("tilt").textContent = d.tilt ? "Ja" : "Nein";
   document.getElementById("light").textContent = d.dark ? "Dunkel" : "Hell";
 
+  // Ändert das Aussehen des Buttons basierend auf dem LED-Status des Senders
+  const btn = document.getElementById("ledBtn");
+  if(d.ledEnabled){
+    btn.textContent = "Status-LED: AN";
+    btn.className = "btn btn-on";
+  } else {
+    btn.textContent = "Status-LED: AUS";
+    btn.className = "btn btn-off";
+  }
+
   document.getElementById("status").textContent =
     (d.sleeping ? "Sender schlaeft" : "Sender ist wach") +
     " | Wechsel in " + d.secondsLeft +
     " s | Letztes Paket vor " + d.ageSec +
     " s | Paket #" + d.seq;
+}
+
+async function toggleLed(){
+  const r = await fetch("/api/toggle-led", {method: "POST"});
+  const d = await r.json();
+  const btn = document.getElementById("ledBtn");
+  if(d.ledEnabled){
+    btn.textContent = "Status-LED: AN";
+    btn.className = "btn btn-on";
+  } else {
+    btn.textContent = "Status-LED: AUS";
+    btn.className = "btn btn-off";
+  }
 }
 
 async function loadHistory(){
@@ -523,6 +558,12 @@ void onDataRecv(const esp_now_recv_info_t *info, const uint8_t *incomingData, in
   if (packet.magic != PACKET_MAGIC) return;
   if (packet.version != PACKET_VERSION) return;
 
+  // NEU: Liest die MAC-Adresse des Senders beim ersten Paket automatisch aus
+  if (!senderMacKnown) {
+    memcpy(senderMacAddress, info->src_addr, 6);
+    senderMacKnown = true;
+  }
+
   portENTER_CRITICAL(&packetMux);
   pendingPacket = packet;
   hasPendingPacket = true;
@@ -581,10 +622,39 @@ void handleCurrent() {
   json += "\"lightRaw\":" + String(currentPacket.lightRaw) + ",";
   json += "\"motion\":" + boolText(currentPacket.motion) + ",";
   json += "\"tilt\":" + boolText(currentPacket.tilt) + ",";
-  json += "\"dark\":" + boolText(currentPacket.dark);
+  json += "\"dark\":" + boolText(currentPacket.dark) + ",";
+  // NEU: Schickt den aktuellen LED-Zustand ans Webinterface raus
+  json += "\"ledEnabled\":" + boolText(webLedState);
   json += "}";
 
   server.send(200, "application/json", json);
+}
+
+// NEU: Endpunkt um die LED umzuschalten und den Befehl per Funk zurückzuschicken
+void handleToggleLed() {
+  webLedState = !webLedState;
+
+  if (senderMacKnown) {
+    // Falls der Sender noch kein eingetragener Peer im Empfänger ist, fügen wir ihn hinzu
+    if (!esp_now_is_peer_exist(senderMacAddress)) {
+      esp_now_peer_info_t peerInfo = {};
+      memcpy(peerInfo.peer_addr, senderMacAddress, 6);
+      peerInfo.channel = WiFi.channel();
+      peerInfo.encrypt = false;
+      esp_now_add_peer(&peerInfo);
+    }
+
+    // Sendet 1 (= AN) oder 0 (= AUS) via ESP-NOW zurück an den Sender
+    uint8_t command = webLedState ? 1 : 0;
+    esp_now_send(senderMacAddress, &command, 1);
+    Serial.print("ESP-NOW Befehl an Sender abgesetzt: ");
+    Serial.println(command);
+  } else {
+    Serial.println("Fehler: Sender-MAC noch unbekannt. Warte auf erstes Paket.");
+  }
+
+  String response = "{\"ledEnabled\":" + boolText(webLedState) + "}";
+  server.send(200, "application/json", response);
 }
 
 void appendBucketJson(String &json, HistoryBucket &b, String label) {
@@ -664,6 +734,9 @@ void setupServer() {
   server.on("/", handleRoot);
   server.on("/api/current", handleCurrent);
   server.on("/api/history", handleHistory);
+  
+  // NEU: Registriert den POST-Endpunkt für das UI-Element
+  server.on("/api/toggle-led", HTTP_POST, handleToggleLed);
 
   // Damit kann das gespeicherte WLAN spaeter geloescht werden:
   // http://192.168.4.1/reset-wifi
