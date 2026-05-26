@@ -68,6 +68,25 @@ void onDataSent(const wifi_tx_info_t *tx_info, esp_now_send_status_t status) {
   Serial.println(status == ESP_NOW_SEND_SUCCESS ? "OK" : "FEHLER");
 }
 
+// VORBEREITUNG FÜR WEBINTERFACE: Diese Funktion verarbeitet empfangene Daten vom Empfänger.
+void onDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *data, int len) {
+  // Wir erwarten 1 Byte (1 = LED an, 0 = LED aus)
+  if (len == 1) {
+    extern bool ledEnabled;
+    if (data[0] == 1) {
+      ledEnabled = true;
+      Serial.println("LED via Webinterface eingeschaltet.");
+    } else if (data[0] == 0) {
+      ledEnabled = false;
+      // Schaltet die Hardware-Pins sofort ab
+      ledcWrite(25, 0);
+      ledcWrite(26, 0);
+      ledcWrite(27, 0);
+      Serial.println("LED via Webinterface ausgeschaltet.");
+    }
+  }
+}
+
 // ================================================================
 // OLED DISPLAY
 // ================================================================
@@ -129,6 +148,9 @@ const unsigned long SEND_INTERVAL = 1000;
 bool sleepMode = false;
 unsigned long phaseStart = 0;
 unsigned long lastSendMs = 0;
+
+// VORBEREITUNG FÜR WEBINTERFACE: Bestimmt, ob die RGB-LED leuchten darf
+bool ledEnabled = true;
 
 // ================================================================
 // VARIABLEN FUER MITTELWERTE
@@ -213,6 +235,13 @@ void readDhtCached(float &t, float &h) {
 // ================================================================
 
 void setColor(int r, int g, int b) {
+  // VORBEREITUNG FÜR WEBINTERFACE: Wenn deaktiviert, bleibt die LED aus
+  if (!ledEnabled) {
+    ledcWrite(redPin, 0);
+    ledcWrite(greenPin, 0);
+    ledcWrite(bluePin, 0);
+    return;
+  }
   ledcWrite(redPin, r);
   ledcWrite(greenPin, g);
   ledcWrite(bluePin, b);
@@ -246,6 +275,9 @@ void setupEspNow() {
 
   // Ruft die Funktion auf wenn das Senden fertig ist
   esp_now_register_send_cb(onDataSent);
+  
+  // VORBEREITUNG FÜR WEBINTERFACE: Registriert die Empfangs-Funktion
+  esp_now_register_recv_cb(onDataRecv);
 
   // Empfaenger als Peer eintragen.
   esp_now_peer_info_t peerInfo = {};
@@ -282,7 +314,9 @@ void sendSensorPacket(bool sleeping, bool historySample, int secondsLeft,
   // 1 zB Bewegung 0 keine
   packet.motion = pir ? 1 : 0;
   packet.tilt = tilt ? 1 : 0;
-  packet.dark = light > 3000 ? 1 : 0;
+  
+  // NEU: Schwellenwert auf 4050 angepasst, damit dein helles Raumlicht (4095) korrekt filtert
+  packet.dark = light > 4050 ? 1 : 0;
 
   // 1 Pause 0 Messen
   packet.sleeping = sleeping ? 1 : 0;
@@ -511,7 +545,8 @@ void loop() {
   // Verhalten waehrend der Pausenphase
   // ------------------------------------------------------------
   if (sleepMode) {
-    bool avgIsDark = avgLight > 3000;
+    // NEU: Schwellenwert auf 4050 angepasst
+    bool avgIsDark = avgLight > 4050;
     int secondsLeft = remainingSeconds(SLEEP_TIME);
 
     // Im Sleep/Pausenmodus werden die Durchschnittswerte angezeigt.
@@ -549,15 +584,27 @@ void loop() {
   int tilt = !digitalRead(tiltPin);
 
   int light = analogRead(lightPin);
-  bool isDark = (light > 3000);
+  
+  // NEU: Schwellenwert auf 4050 angepasst
+  bool isDark = (light > 4050);
 
   // Werte fuer den 30-Sekunden-Durchschnitt sammeln.
   addAverages(pir, distance, tilt, t, h, light);
 
-  // RGB LED zeigt die Distanz an.
-  if (distance > 0 && distance < 10) setColor(255, 0, 0);
-  else if (distance < 25) setColor(255, 120, 0);
-  else setColor(0, 255, 0);
+  // RGB LED zeigt den Zustand an.
+  // NEU: Wenn der Ultraschallsensor disconnected/0 ist, schaltet die LED auf BLAU
+  if (distance <= 0) {
+    setColor(0, 0, 255); 
+  } 
+  else if (distance < 10) {
+    setColor(255, 0, 0); // Rot bei sehr naher Distanz
+  } 
+  else if (distance < 25) {
+    setColor(255, 120, 0); // Orange bei mittlerer Distanz
+  } 
+  else {
+    setColor(0, 255, 0); // Gruen bei freier Bahn
+  }
 
   int secondsLeft = remainingSeconds(MEASURE_TIME);
 
