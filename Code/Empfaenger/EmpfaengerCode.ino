@@ -19,32 +19,45 @@ const char* AP_SSID = "ESP32-Empfaenger";
 const char* AP_PASS = "12345678";
 
 // WiFiManager-Setup-Access-Point
+// Wird nur geöffnet wenn es keine Verbindung zu Router gibt (Notfallplan) für die Konfiguration
 const char* CONFIG_AP_SSID = "ESP32-Setup";
 const char* CONFIG_AP_PASS = "12345678";
 
 // ---------------- TELEGRAM ----------------
 const unsigned long TELEGRAM_POLL_MS = 2000;
 const unsigned long MOTION_COOLDOWN_MS = 30000;
+// nur aktiv wenn /auto aktiviert ist 
 const unsigned long STATUS_INTERVAL_MS = 300000;
 
+// Merken ob schon gesendet wurde
 bool alertsEnabled = true;
 bool statusEnabled = false;
 
+// Zeitstempel
 unsigned long lastMotionAlertMs = 0;
 unsigned long lastStatusSentMs = 0;
 unsigned long lastTelegramPollMs = 0;
 bool lastMotionState = false;
 
 // ---------------- ESP-NOW PACKET ----------------
+// Identifikationsschlüssel vom Sender (alles Ok = gleich)
 #define PACKET_MAGIC 0xAABBCCDD
+// Struktur abgleich, 2 ist wie eine Schablone da nur Bytes gesendet werden wenn sensoren sich 
+// ändern ohne nummer Schablone falsch
 #define PACKET_VERSION 2
 
+// Paket Struktur definieren, keine künstlichen Leerzeichen einfügen = Paket so klein wie mögl.
 typedef struct __attribute__((packed)) {
+  // Buchstaben abgleich
   uint32_t magic;
+  // Version
   uint8_t version;
+  // Paketnummer
   uint32_t seq;
+  // Zeitstempel
   uint32_t uptimeMs;
 
+  // Werte des Pakets
   float distanceCm;
   float temperatureC;
   float humidityPct;
@@ -57,34 +70,52 @@ typedef struct __attribute__((packed)) {
   uint8_t sleeping;
   uint8_t historySample;
   uint16_t secondsLeft;
+// Name
 } SensorPacket;
 
 // ---------------- CURRENT DATA ----------------
-SensorPacket currentPacket;
-bool hasCurrentPacket = false;
-unsigned long lastReceiveMs = 0;
+// aktuell gültiges Live-Datenpaket
+SensorPacket currentPacket; 
+// True, sobald das erste Paket der Lebensdauer ankam
+bool hasCurrentPacket = false;   
+// Zeitstempel (Stoppuhr) des letzten erfolgreichen Empfangs
+unsigned long lastReceiveMs = 0;      
 
-SensorPacket pendingPacket;
+// Zwischenablage (Postbox) für frisch empfangene Funkdaten
+SensorPacket pendingPacket;  
+// Signalisiert dem Hauptprogramm: "Neue Post im Zwischenspeicher!"
 volatile bool hasPendingPacket = false;
+// Digitales Türschloss gegen Datenkonflikte (Multitasking)
 portMUX_TYPE packetMux = portMUX_INITIALIZER_UNLOCKED;
 
-// NEU: Variablen um die Sender-MAC dynamisch zu speichern und den LED-Zustand zu tracken
+// Speichert MAC des Senders
 uint8_t senderMacAddress[6] = {0};
+// true wenn mac von Sender erkannt wurde
 bool senderMacKnown = false;
+// Merkt sich den Zustand (An/Aus) der LED im Webinterface
 bool webLedState = true; 
 
 // ---------------- HISTORY ----------------
+// Anzahl der Speicherplätze für die Kurzzeit-Grafik (12 Plätze)
 const int HOUR_BUCKETS = 12;
+// Anzahl der Speicherplätze für die Langzeit-Grafik (168 Plätze)
 const int WEEK_BUCKETS = 168;
 
+// Intervall für Kurzzeit: Alle 5 Minuten ein Datenpunkt
 const unsigned long HOUR_BUCKET_MS = 5UL * 60UL * 1000UL;
+// Intervall für Langzeit: Jede Stunde (60 Min) ein Datenpunkt
 const unsigned long WEEK_BUCKET_MS = 60UL * 60UL * 1000UL;
 
 struct HistoryBucket {
+  // True, wenn dieser Speicherplatz bereits echte Daten enthält                          
   bool valid;
+  // Nummerierung
   uint32_t slot;
+  // Zähler für Mittelwert
   uint16_t count;
 
+
+  // Messungen
   float distanceCm;
   float temperatureC;
   float humidityPct;
@@ -95,15 +126,20 @@ struct HistoryBucket {
   uint16_t darkCount;
 };
 
+// Speicher für die Grafik
 HistoryBucket hourHistory[HOUR_BUCKETS];
 HistoryBucket weekHistory[WEEK_BUCKETS];
 
 // ---------------- OBJEKTE ----------------
-WebServer server(80);
-WiFiClientSecure secureClient;
-UniversalTelegramBot bot(BOT_TOKEN, secureClient);
+// Erstellt den Webserver auf Standard-Port 80 (für die Webseite)
+WebServer server(80); 
+// Erstellt einen verschlüsselten WLAN-Client (für sichere SSL-Verbindungen)
+WiFiClientSecure secureClient;   
+// Erstellt den Telegram-Bot, der die sichere Verbindung nutzt
+UniversalTelegramBot bot(BOT_TOKEN, secureClient); 
 
 // ---------------- HTML (ERWEITERT UM DEN LED-SCHALTER) ----------------
+// Startet den Webseiten-Text und lagert ihn platzsparend in den Flash-Speicher aus
 const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <!doctype html>
 <html lang="de">
@@ -333,17 +369,22 @@ setInterval(refresh, 1000);
 
 // ---------------- HELPERS ----------------
 String boolText(bool value) {
+  // gibt true und false als lesbaren Text zurücl
   return value ? "true" : "false";
 }
 
 String jsonFloat(float value, int digits) {
+  // Funktion: Formatiert Kommazahlen sicher für das Webinterface (JSON-Format)
+  // Schützt vor Abstürzen: Wenn der Sensor defekt ist (kein Wert), sende "null"
   if (isnan(value) || isinf(value)) return "null";
   return String(value, digits);
 }
 
 // ---------------- NETWORK SETUP MIT WIFI MANAGER ----------------
 void setupNetwork() {
+  // Schaltet das WLAN zuerst in den Client-Modus (Station Mode)
   WiFi.mode(WIFI_STA);
+  // Deaktiviert jegliche Stromparmodus für einen stabilen Betrieb
   WiFi.setSleep(false);
   esp_wifi_set_ps(WIFI_PS_NONE);
 
@@ -351,18 +392,21 @@ void setupNetwork() {
 
   // Wenn keine gespeicherten WLAN-Daten vorhanden sind, startet der ESP32
   // das Setup-WLAN ESP32-Setup. Dort kann ein WLAN ausgewaehlt werden.
-  wm.setConfigPortalTimeout(180);
+  wm.setConfigPortalTimeout(180); // Wird autom beendet nach 3min ohne Eingabe
 
   Serial.println("Starte WiFiManager...");
   Serial.print("Setup-WLAN: ");
   Serial.println(CONFIG_AP_SSID);
 
+  // Versucht ins Heim-WLAN zu kommen; startet bei Fehlschlag das Setup-WLAN
   bool connected = wm.autoConnect(CONFIG_AP_SSID, CONFIG_AP_PASS);
 
+  // Setzt den Funkkanal standardmäßig auf den Notfall-Kanal
   int channel = FALLBACK_ESPNOW_CHANNEL;
 
+  // Wenn die Verbindung zum Heim-WLAN erfolgreich steht:
   if (connected && WiFi.status() == WL_CONNECTED) {
-    channel = WiFi.channel();
+    channel = WiFi.channel(); // Holt den exakten Funkkanal, auf dem dein Router funkt
 
     Serial.println("WLAN verbunden.");
     Serial.print("WLAN IP: ");
@@ -373,6 +417,7 @@ void setupNetwork() {
 
   // Danach laeuft der Empfaenger als WLAN-Client und als eigener Access Point.
   WiFi.mode(WIFI_AP_STA);
+  // Stromsparmodus deaktivieren
   WiFi.setSleep(false);
   esp_wifi_set_ps(WIFI_PS_NONE);
 
@@ -395,6 +440,7 @@ void setupNetwork() {
 }
 
 // ---------------- TELEGRAM ----------------
+// Wenn WLAN nicht verbunden ist
 void sendTelegram(const String& text) {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("Telegram nicht gesendet: WLAN nicht verbunden");
@@ -412,6 +458,7 @@ String buildTelegramStatus() {
     return "Noch keine Sensordaten empfangen.";
   }
 
+  // Daten zusammensetzen
   String msg = "ESP32 Sensorstatus\n";
   msg += "Modus: ";
   msg += currentPacket.sleeping ? "Sleep\n" : "Awake\n";
@@ -434,13 +481,18 @@ String buildTelegramStatus() {
 }
 
 void handleTelegram() {
+  // WLAN nicht connected
   if (WiFi.status() != WL_CONNECTED) return;
 
+  // nur positive Werte, aktuelle Zeit seit Start (Laufzeit)
   unsigned long now = millis();
 
+  // Prüft, ob das Wartezeit-Intervall für die Abfrage abgelaufen ist
   if (now - lastTelegramPollMs >= TELEGRAM_POLL_MS) {
+    // Zeitstempel
     lastTelegramPollMs = now;
 
+    // Holt neue Nachrichten vom Telegram-Server
     int numMessages = bot.getUpdates(bot.last_message_received + 1);
 
     for (int i = 0; i < numMessages; i++) {
@@ -504,7 +556,9 @@ void handleTelegram() {
 }
 
 // ---------------- HISTORY HELPERS ----------------
+// Funktion: Leert einen Speicherbecher und weist ihm eine Nummer zu
 void resetBucket(HistoryBucket &b, uint32_t slot) {
+  // Löscht die alten Durchschnittswerte
   b.valid = true;
   b.slot = slot;
   b.count = 0;
@@ -519,6 +573,7 @@ void resetBucket(HistoryBucket &b, uint32_t slot) {
   b.darkCount = 0;
 }
 
+// Funktion: Rechnet ein neues Paket in die Mittelwerte mit ein
 void addToBucket(HistoryBucket &b, SensorPacket &p) {
   b.count++;
 
@@ -532,6 +587,7 @@ void addToBucket(HistoryBucket &b, SensorPacket &p) {
   if (p.dark) b.darkCount++;
 }
 
+// Funktion: Sortiert Daten in das Stunden- oder Wochen-Array ein
 void addToHistoryArray(HistoryBucket buckets[], int bucketCount, unsigned long bucketMs, SensorPacket &p) {
   uint32_t slot = millis() / bucketMs;
   int index = slot % bucketCount;
@@ -550,23 +606,34 @@ void addToHistory(SensorPacket &p) {
 
 // ---------------- ESP-NOW RECEIVE ----------------
 void onDataRecv(const esp_now_recv_info_t *info, const uint8_t *incomingData, int len) {
+  // Bricht ab, wenn das Paket eine falsche Größe hat (Schutz vor Störungen)
   if (len != sizeof(SensorPacket)) return;
 
+  // Erstellt eine leere Struktur-Variable für die Sensordaten
   SensorPacket packet;
+  // Kopiert die rohen Funk-Bytes eins zu eins in unsere Struktur-Variable
   memcpy(&packet, incomingData, sizeof(packet));
 
+  // Bricht ab wenn Buchstaben nicht stimmen
   if (packet.magic != PACKET_MAGIC) return;
+  // Bricht ab wenn Version nicht stimmt
   if (packet.version != PACKET_VERSION) return;
 
-  // NEU: Liest die MAC-Adresse des Senders beim ersten Paket automatisch aus
+  // Wenn die MAC-Adresse des Senders bisher noch unbekannt war:
   if (!senderMacKnown) {
+    // Kopiert die 6 Bytes der Sender-Adresse aus den Funk-Metadaten
     memcpy(senderMacAddress, info->src_addr, 6);
+    // auf true setzen um nochmal zu vermeiden
     senderMacKnown = true;
   }
 
+  // Sperrt kurzzeitig andere Prozesse aus (Multitasking-Schutz)
   portENTER_CRITICAL(&packetMux);
+  // Kopiert das frisch empfangene Paket sicher in die Zwischenablage
   pendingPacket = packet;
+  // Setzt die Flagge: "Es liegt ein neues Paket zur Verarbeitung bereit"
   hasPendingPacket = true;
+  // Gibt die Ressourcen wieder frei für den normalen Programmablauf
   portEXIT_CRITICAL(&packetMux);
 }
 
