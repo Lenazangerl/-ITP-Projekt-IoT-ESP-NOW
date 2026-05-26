@@ -113,6 +113,96 @@ Der zweite ESP32 soll die empfangenen Daten über ein Webinterface visualisieren
 
 ---
 
+## 4.2 Bauteile Verbinden
+
+### Sensoren 
+
+**Neigungssensor (Tilt B15)**
+VCC -> 5V
+GND -> GND
+OUT -> GPIO 32
+
+Der Tilt-Sensor benötigt einen digitalen Eingang. Je nach Modul kann ein Pullup- oder Pulldown-Widerstand nötig sein. GPIO 32 ist dafür geeignet.
+
+**Helligkeitssensor (LDR)**
+
+VCC -> 3.3V
+GND -> GND
+DO -> GPIO 34
+
+Ein LDR wird über einen Spannungsteiler an einem analogen Eingang gemessen. Geeignet sind z. B. GPIO 34, 35, 36 oder 39. Diese Pins sind nur Eingänge und daher gut für Sensoren geeignet
+
+**Temperatur- und Luftfeuchtigkeitssensor (DHT11)**
+
+VCC -> 3.3V
+GND -> GND
+SIGNAL -> GPIO 33
+
+Der DHT11 benötigt einen digitalen GPIO als Datenleitung. Geeignet sind z. B. GPIO 33, 32, 25, 26 oder 27. Der Sensor sollte nicht zu schnell ausgelesen werden.
+
+**Bewegungssensor (PIR)**
+
+VCC -> 5V
+GND -> GND
+OUT -> GPIO 2
+
+Der PIR-Sensor benötigt einen digitalen Eingang. GPIO 2 kann beim Starten des ESP32 problematisch sein, weil er ein Boot-Pin ist. Besser sind z. B. GPIO 14, 16, 17, 19 oder 23.
+
+**Ultraschallsensor (HC-SR04)**
+
+VCC -> 5V
+GND -> GND
+TRIG -> GPIO 5
+ECHO -> GPIO 18
+
+Der Sensor benötigt zwei digitale Pins: TRIG als Ausgang und ECHO als Eingang. Wichtig: Der ECHO-Pin kann 5 V ausgeben, der ESP32 verträgt aber nur 3,3 V. Deshalb sollte ein Spannungsteiler verwendet werden.
+
+### Aktoren
+
+**Mehrfarbige LED (RGB LED)**
+
+Kathode -> GND
+ROT (Anode) -> 3.3V GPIO 25
+GRÜN (Anode) -> 3.3V GPIO 26
+BLAU (Anode) -> 3.3V GPIO 27
+
+Eine RGB-LED benötigt drei PWM-fähige Ausgänge, einen für Rot, Grün und Blau. Im Projekt werden GPIO 25, 26 und 27 verwendet. Für jede Farbe sollte ein Vorwiderstand verwendet werden. Zusätzlich braucht man für alle kurzen Beine einrn 220 OHM Wiederstand, welcher seriell angehängt wird.
+
+**Buzzer**
+
+VCC -> 3.3V GPIO 13
+GND -> GND
+
+Der Buzzer benötigt einen digitalen Ausgang. Für Töne mit tone() eignet sich ein normaler GPIO, z. B. GPIO 13. Bei 
+größeren Buzzern sollte ein Transistor verwendet werden.
+
+**OLED Display**
+
+VCC -> 3.3V
+GND -> GND
+SCL -> GPIO 22
+SDA -> GPIO 21
+
+Das Display wird über I2C angeschlossen. Beim ESP32 werden häufig GPIO 21 als SDA und GPIO 22 als SCL verwendet. Die I2C-Adresse ist meistens 0x3C.
+
+### Hinweiß
+
+Alle GND-Anschlüsse der Sensoren, Aktoren und des ESP32 müssen miteinander verbunden sein.
+
+---
+
+## 4.3 Code hochladen / testen
+
+Nach dem Aufbau der Schaltung wird der Programmcode auf beide ESP32 hochgeladen. Zuerst sollte der Empfänger gestartet werden, damit im seriellen Monitor die MAC-Adresse und der verwendete WLAN-Kanal angezeigt werden. Diese Werte müssen anschließend im Sender-Code eingetragen werden.
+
+Wichtig ist ebenfalls zu beachten das der Empfänger ESP32 erst Wlan hat, wenn man sich einmal mit ihm verbindet, wenn nicht geändert Passwort: 12345678 und Name: ESP32-Empfaenger. Dann öffnet sich eine Konfigurationsseite, auf der man einmal den ESP32 mit den WLAN Daten (Name, Passwort) seines Wlans zuhause verbiden muss. 
+
+Danach wird der Sender gestartet. Im seriellen Monitor kann überprüft werden, ob die ESP-NOW-Pakete erfolgreich gesendet werden. Beim Empfänger sollte sichtbar sein, dass regelmäßig neue Datenpakete ankommen. Erst wenn diese Kommunikation funktioniert, werden Webinterface, Graph und Telegram-Bot getestet.
+
+Zum Testen wird das Webinterface des Empfängers geöffnet und kontrolliert, ob sich die Sensorwerte bei Änderungen am Aufbau aktualisieren. Anschließend wird geprüft, ob der Sleep-/Pausenmodus korrekt zwischen Messphase und Pause wechselt und ob der Graph nach einigen Messzyklen historische Durchschnittswerte anzeigt. Zum Schluss kann der Telegram-Bot mit dem Befehl /status getestet werden.
+
+---
+
 ## Umgesetzte Funktionen
 
 ### GK (Grundkompetenzen)
@@ -135,18 +225,6 @@ Der zweite ESP32 soll die empfangenen Daten über ein Webinterface visualisieren
 - **JSON-API:** Bereitstellung der aktuellen Sensordaten in maschinenlesbarer Form
 - **Telegram-Bot:** Abfrage des aktuellen Sensorstatus über Telegram mit `/status`
 - **einfacher Graph / Mittelwertbildung:** Berechnung von Durchschnittswerten aus den Messdaten einer Messphase und darstellung historischer Durchschnittswerte im Webinterface
-
----
-
-## Systemarchitektur
-
-Das System besteht aus zwei getrennten ESP32-Mikrocontrollern: einem Sender und einem Empfänger.
-
-Der Sender-ESP32 ist mit den Sensoren und einem OLED-Display verbunden. Er misst Distanz, Temperatur, Luftfeuchtigkeit, Bewegung, Neigung und Helligkeit. Während der Messphase werden die aktuellen Werte direkt am OLED-Display angezeigt und per ESP-NOW an den Empfänger gesendet.
-
-Der Empfänger-ESP32 bleibt dauerhaft aktiv. Er empfängt die Sensordaten über ESP-NOW und stellt sie über einen Webserver bereit. Über die IP-Adresse des Empfängers kann ein Webinterface geöffnet werden, auf dem aktuelle Messwerte und historische Durchschnittswerte angezeigt werden.
-
-Zusätzlich ist auf dem Empfänger ein Telegram-Bot integriert. Über diesen kann der aktuelle Sensorstatus per Telegram abgefragt werden.
 
 ---
 
