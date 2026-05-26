@@ -119,7 +119,9 @@ Der zweite ESP32 soll die empfangenen Daten über ein Webinterface visualisieren
 
 **Neigungssensor (Tilt B15)**
 VCC -> 5V
+
 GND -> GND
+
 OUT -> GPIO 32
 
 Der Tilt-Sensor benötigt einen digitalen Eingang. Je nach Modul kann ein Pullup- oder Pulldown-Widerstand nötig sein. GPIO 32 ist dafür geeignet.
