@@ -316,7 +316,7 @@ Der Schaltungsplan zeigt den Aufbau des Projekts mit dem Sender-ESP32 und den an
 Der Sender-Code befindet sich in der Datei:
 
 ```text
-Code/sender.ino
+Code/Sender/SenderCode.ino
 ```
 
 ### Empfänger Code
@@ -324,7 +324,7 @@ Code/sender.ino
 Der Empfänger-Code befindet sich in der Datei:
 
 ```text
-Code/empfaenger.ino
+Code/Empfaenger/EmpfaengerCode.ino
 ```
 
 
