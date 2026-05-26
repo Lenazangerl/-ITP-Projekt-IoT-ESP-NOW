@@ -1,5 +1,6 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <WiFiManager.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
 #include <WebServer.h>
@@ -7,17 +8,19 @@
 #include <ArduinoJson.h>
 
 // ---------------- HIER ANPASSEN ----------------
-const char* WIFI_SSID = "WLAN-Name";
-const char* WIFI_PASS = "WLAN-Passwort";
-
 #define BOT_TOKEN "BOT-Token"
 #define CHAT_ID "USER-ID"
 
 // Wird benutzt, falls WLAN nicht verbunden wird.
 #define FALLBACK_ESPNOW_CHANNEL 1
 
+// Webinterface-Access-Point
 const char* AP_SSID = "ESP32-Empfaenger";
 const char* AP_PASS = "12345678";
+
+// WiFiManager-Setup-Access-Point
+const char* CONFIG_AP_SSID = "ESP32-Setup";
+const char* CONFIG_AP_PASS = "12345678";
 
 // ---------------- TELEGRAM ----------------
 const unsigned long TELEGRAM_POLL_MS = 2000;
@@ -303,37 +306,42 @@ String jsonFloat(float value, int digits) {
   return String(value, digits);
 }
 
-// ---------------- NETWORK SETUP ----------------
+// ---------------- NETWORK SETUP MIT WIFI MANAGER ----------------
 void setupNetwork() {
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
+  esp_wifi_set_ps(WIFI_PS_NONE);
+
+  WiFiManager wm;
+
+  // Wenn keine gespeicherten WLAN-Daten vorhanden sind, startet der ESP32
+  // das Setup-WLAN ESP32-Setup. Dort kann ein WLAN ausgewaehlt werden.
+  wm.setConfigPortalTimeout(180);
+
+  Serial.println("Starte WiFiManager...");
+  Serial.print("Setup-WLAN: ");
+  Serial.println(CONFIG_AP_SSID);
+
+  bool connected = wm.autoConnect(CONFIG_AP_SSID, CONFIG_AP_PASS);
+
+  int channel = FALLBACK_ESPNOW_CHANNEL;
+
+  if (connected && WiFi.status() == WL_CONNECTED) {
+    channel = WiFi.channel();
+
+    Serial.println("WLAN verbunden.");
+    Serial.print("WLAN IP: ");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println("Kein WLAN verbunden. Telegram ist deaktiviert.");
+  }
+
+  // Danach laeuft der Empfaenger als WLAN-Client und als eigener Access Point.
   WiFi.mode(WIFI_AP_STA);
   WiFi.setSleep(false);
   esp_wifi_set_ps(WIFI_PS_NONE);
 
-  Serial.print("Verbinde mit WLAN: ");
-  Serial.println(WIFI_SSID);
-
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-
-  int tries = 0;
-  while (WiFi.status() != WL_CONNECTED && tries < 40) {
-    delay(500);
-    Serial.print(".");
-    tries++;
-  }
-
-  int channel = FALLBACK_ESPNOW_CHANNEL;
-
-  if (WiFi.status() == WL_CONNECTED) {
-    channel = WiFi.channel();
-
-    Serial.println();
-    Serial.print("WLAN verbunden. IP: ");
-    Serial.println(WiFi.localIP());
-  } else {
-    Serial.println();
-    Serial.println("WLAN nicht verbunden. Telegram ist deaktiviert.");
-  }
-
+  // Der AP wird auf dem gleichen Kanal gestartet, den auch ESP-NOW nutzt.
   WiFi.softAP(AP_SSID, AP_PASS, channel);
 
   Serial.print("AP IP: ");
@@ -642,10 +650,24 @@ void handleHistory() {
   }
 }
 
+void handleResetWifi() {
+  server.send(200, "text/plain", "WLAN-Daten werden geloescht. ESP startet neu.");
+  delay(1000);
+
+  WiFiManager wm;
+  wm.resetSettings();
+
+  ESP.restart();
+}
+
 void setupServer() {
   server.on("/", handleRoot);
   server.on("/api/current", handleCurrent);
   server.on("/api/history", handleHistory);
+
+  // Damit kann das gespeicherte WLAN spaeter geloescht werden:
+  // http://192.168.4.1/reset-wifi
+  server.on("/reset-wifi", handleResetWifi);
 
   server.begin();
   Serial.println("Webserver gestartet");
