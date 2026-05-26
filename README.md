@@ -238,7 +238,7 @@ Zum Testen wird das Webinterface des Empfängers geöffnet und kontrolliert, ob 
 - **PIR-Bewegungssensor:** Erkennt Bewegungen im Raum und löst bei Bewegung den Buzzer aus
 - **Ultraschallsensor HC-SR04:** Misst die Entfernung zu Objekten in Zentimetern
 - **DHT11-Sensor:** Misst Temperatur und Luftfeuchtigkeit
-- **RGB-LED:** Visualisiert die Distanz durch verschiedene Farben, z. B. grün, orange und rot
+- **RGB-LED:** Visualisiert die Distanz durch verschiedene Farben, z. B. grün, gelb, rot und blau
 - **Buzzer:** Gibt ein akustisches Signal aus, sobald Bewegung erkannt wird
 - **OLED-Display:** Anzeige der aktuellen Werte und des aktuellen Zustands direkt am Sender
 - **Telegram-Bot:** Abfrage des aktuellen Sensorstatus über Telegram mit `/status`
@@ -256,8 +256,9 @@ Der Buzzer wird aktiviert, sobald der PIR-Sensor eine Bewegung erkennt. Dadurch 
 Die RGB-LED visualisiert die gemessene Distanz des Ultraschallsensors:
 
 - **Grün:** Objekt ist weit entfernt
-- **Orange/Gelb:** Objekt befindet sich in mittlerer Entfernung
+- **Gelb:** Objekt befindet sich in mittlerer Entfernung
 - **Rot:** Objekt ist sehr nah
+- **Blau** Keine Werte vom Ultraschallsensor
 
 Der Sender arbeitet in einem Mess- und Pausenzyklus. Während der Messphase werden aktuelle Werte aufgenommen und angezeigt. Nach 30 Sekunden werden Durchschnittswerte berechnet. In der anschließenden Pausenphase werden keine neuen Messwerte aufgenommen, sondern die zuletzt berechneten Durchschnittswerte angezeigt und übertragen.
 
@@ -312,19 +313,13 @@ Der Schaltungsplan zeigt den Aufbau des Projekts mit dem Sender-ESP32 und den an
 
 ### Sender Code
 
-Der Sender-Code befindet sich in der Datei:
-
-```text
-Code/Sender/SenderCode.ino
-```
+[Code/Sender/SenderCode.ino](Code/Sender/SenderCode.ino)
 
 ### Empfänger Code
 
 Der Empfänger-Code befindet sich in der Datei:
 
-```text
-Code/Empfaenger/EmpfaengerCode.ino
-```
+[Code/Empfaenger/EmpfaengerCode.ino](Code/Empfaenger/EmpfaengerCode.ino)
 
 ## 10. Quellen
 
