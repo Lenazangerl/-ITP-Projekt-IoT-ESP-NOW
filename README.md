@@ -241,7 +241,7 @@ Zum Testen wird das Webinterface des Empfängers geöffnet und kontrolliert, ob 
 - **DHT11-Sensor:** Misst Temperatur und Luftfeuchtigkeit
 - **RGB-LED:** Visualisiert die Distanz durch verschiedene Farben, z. B. grün, orange und rot
 - **Buzzer:** Gibt ein akustisches Signal aus, sobald Bewegung erkannt wird
-- **JSON-API:** Bereitstellung der aktuellen Sensordaten in maschinenlesbarer Form
+- **OLED-Display** Zeigt die gemessenen Werte an.
 - **Telegram-Bot:** Abfrage des aktuellen Sensorstatus über Telegram mit `/status`
 - **einfacher Graph / Mittelwertbildung:** Berechnung von Durchschnittswerten aus den Messdaten einer Messphase und darstellung historischer Durchschnittswerte im Webinterface
 
