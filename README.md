@@ -8,7 +8,7 @@ Datum: 25.05.2026
 
 ---
 
-## Einführung
+## 1. Einführung
 Im Rahmen dieses Projekts wurde ein IoT-System mit zwei ESP32-Mikrocontrollern umgesetzt. Ziel war es, Sensordaten drahtlos über ESP-NOW zu übertragen und auf einem zweiten ESP32 übersichtlich darzustellen.
 
 Der erste ESP32 dient als Sender und erfasst verschiedene Umgebungsdaten wie Distanz, Temperatur, Luftfeuchtigkeit, Bewegung, Neigung und Helligkeit. Die Messwerte werden direkt auf einem OLED-Display angezeigt und zusätzlich per ESP-NOW an den zweiten ESP32 übertragen.
@@ -17,7 +17,7 @@ Der zweite ESP32 arbeitet als Empfänger. Er nimmt die Sensordaten entgegen, ste
 
 ---
 
-## Projektbeschreibung
+## 2. Projektbeschreibung
 
 Das System besteht aus einem Sender-ESP32 und einem Empfänger-ESP32. Der Sender liest die angeschlossenen Sensoren aus und sendet die Messdaten regelmäßig über ESP-NOW an den Empfänger. Während der Messphase werden aktuelle Werte laufend übertragen und am OLED-Display dargestellt.
 
@@ -29,7 +29,7 @@ Zur besseren Auswertung werden die historischen Daten im Webinterface als einfac
 
 ---
 
-## Projektziel
+## 3. Projektziel
 
 Ziel dieses Projekts ist die Umsetzung eines IoT-Systems mit zwei ESP32-Mikrocontrollern. Sensordaten sollen auf einem ESP32 erfasst und anschließend drahtlos über ESP-NOW an einen zweiten ESP32 übertragen werden.
 
@@ -37,7 +37,7 @@ Der zweite ESP32 soll die empfangenen Daten über ein Webinterface visualisieren
 
 ---
 
-## Arbeitsschritte
+## 4. Arbeitsschritte
 
 1. Auswahl und Anschluss der Sensoren am Sender-ESP32
 2. Einrichten des OLED-Displays zur Anzeige der aktuellen Messwerte
@@ -53,6 +53,37 @@ Der zweite ESP32 soll die empfangenen Daten über ein Webinterface visualisieren
 12. Bereitstellung einer JSON-API für die aktuellen Sensordaten
 13. Integration eines Telegram-Bots zur Statusabfrage
 14. Testen der Kommunikation, Anzeige und Bot-Funktion
+
+---
+
+## 4.1 Komponenten
+
+Software
+
+Libraries:
+**WiFi.h**  
+  Wird verwendet, um den ESP32 mit einem WLAN zu verbinden und den Access Point für das Webinterface bereitzustellen.
+
+- **WiFiClientSecure.h**  
+  Ermöglicht verschlüsselte HTTPS-Verbindungen. Diese Library wird für die Kommunikation mit der Telegram-API benötigt.
+
+- **WiFiManager.h**  
+  Stellt eine Konfigurationsseite bereit, über die WLAN-Zugangsdaten eingegeben werden können, ohne sie fest im Code einzutragen.
+
+- **esp_now.h**  
+  Wird für die ESP-NOW-Kommunikation zwischen Sender-ESP32 und Empfänger-ESP32 verwendet.
+
+- **esp_wifi.h**  
+  Ermöglicht erweiterte WLAN-Einstellungen wie das Setzen bzw. Auslesen des WLAN-Kanals für ESP-NOW.
+
+- **WebServer.h**  
+  Wird genutzt, um auf dem Empfänger-ESP32 einen Webserver zu starten und das Webinterface sowie die JSON-API bereitzustellen.
+
+- **UniversalTelegramBot.h**  
+  Ermöglicht die Kommunikation mit dem Telegram-Bot, z. B. für den Befehl `/status`.
+
+- **ArduinoJson.h**  
+  Wird von der Telegram-Bot-Library benötigt und kann außerdem zur Verarbeitung von JSON-Daten verwendet werden.
 
 ---
 
