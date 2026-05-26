@@ -232,7 +232,6 @@ Zum Testen wird das Webinterface des Empfängers geöffnet und kontrolliert, ob 
 - **Sleep-/Pausenmodus:** Der Sender misst 30 Sekunden lang und pausiert anschließend 30 Sekunden
 - **Helligkeitssensor (LDR):** Erfassung der Umgebungshelligkeit und Einteilung in hell oder dunkel
 - **Tilt-Sensor:** Erkennung einer Neigung bzw. Lageänderung des Geräts
-- **OLED-Display:** Anzeige der aktuellen Werte und des aktuellen Zustands direkt am Sender
 
 ### EK (Erweiterte Kompetenzen)
 
@@ -241,7 +240,7 @@ Zum Testen wird das Webinterface des Empfängers geöffnet und kontrolliert, ob 
 - **DHT11-Sensor:** Misst Temperatur und Luftfeuchtigkeit
 - **RGB-LED:** Visualisiert die Distanz durch verschiedene Farben, z. B. grün, orange und rot
 - **Buzzer:** Gibt ein akustisches Signal aus, sobald Bewegung erkannt wird
-- **OLED-Display** Zeigt die gemessenen Werte an.
+- **OLED-Display:** Anzeige der aktuellen Werte und des aktuellen Zustands direkt am Sender
 - **Telegram-Bot:** Abfrage des aktuellen Sensorstatus über Telegram mit `/status`
 - **einfacher Graph / Mittelwertbildung:** Berechnung von Durchschnittswerten aus den Messdaten einer Messphase und darstellung historischer Durchschnittswerte im Webinterface
 
