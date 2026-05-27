@@ -633,3 +633,254 @@ void loop() {
 
   delay(50);
 }
+erändere nur das es ist den deep sleep geht sprich bei awake soll coundown etc bleiben werte aktuliseirt werden und bei schlaf modus nichts mehr am oled display anzeigen etc soll nach dieser art integriert wrerdne :You can use the timer, waking up your ESP32 using predefined periods of time;
+
+You can use the touch pins;
+
+You can use two possibilities of external wake up: you can use either one external wake up, or several different external wake-up sources;
+
+You can use the ULP co-processor to wake up – this won’t be covered in this guide.
+
+Writing a Deep Sleep Sketch
+
+To write a sketch to put your ESP32 into deep sleep mode, and then wake it up, you need to keep in mind that:
+
+First, you need to configure the wake up sources. This means configure what will wake up the ESP32. You can use one or combine more than one wake up source.
+
+You can decide what peripherals to shut down or keep on during deep sleep. However, by default, the ESP32 automatically powers down the peripherals that are not needed with the wake up source you define.
+
+Finally, you use the esp_deep_sleep_start() function to put your ESP32 into deep sleep mode.
+
+Timer Wake Up
+
+The ESP32 can go into deep sleep mode, and then wake up at predefined periods of time. This feature is specially useful if you are running projects that require time stamping or daily tasks, while maintaining low power consumption.
+
+
+
+The ESP32 RTC controller has a built-in timer you can use to wake up the ESP32 after a predefined amount of time.
+
+Enable Timer Wake Up
+
+Enabling the ESP32 to wake up after a predefined amount of time is very straightforward. In the Arduino IDE, you just have to specify the sleep time in microseconds in the following function:
+
+esp_sleep_enable_timer_wakeup(time_in_us)
+
+Code
+
+To program the ESP32 we’ll use Arduino IDE. So, you need to make sure you have the ESP32 Arduino core installed. Follow the next tutorial to install the ESP32 add-on, if you haven’t already:
+
+Installing ESP32 Board in Arduino IDE 2 (Windows, Mac OS X, Linux)
+
+Let’s see how this works using an example from the library. Open your Arduino IDE, and go to File > Examples > ESP32 Deep Sleep, and open the TimerWakeUp sketch.
+
+/* Simple Deep Sleep with Timer Wake Up
+
+ESP32 offers a deep sleep mode for effective power saving as power is an important factor for IoT applications. In this mode CPUs, most of the RAM, and all the digital peripherals which are clocked
+
+from APB_CLK are powered off. The only parts of the chip which can still be powered on are: RTC controller, RTC peripherals ,and RTC memories This code displays the most basic deep sleep with a timer to wake it up and how to store data in RTC memory to use it over reboots This code is under Public Domain License.
+
+Author: Pranav Cherukupalli <cherukupallip@gmail.com> */#define uS_TO_S_FACTOR 1000000ULL // Conversion factor for micro seconds to seconds#define TIME_TO_SLEEP 5 // Time ESP32 will go to sleep (in seconds)
+
+
+
+RTC_DATA_ATTR int bootCount = 0;// Method to print the reason by which ESP32 has been awaken from sleepvoid print_wakeup_reason(){
+
+esp_sleep_wakeup_cause_t wakeup_reason;
+
+
+
+wakeup_reason = esp_sleep_get_wakeup_cause();
+
+
+
+switch(wakeup_reason)
+
+{
+
+case ESP_SLEEP_WAKEUP_EXT0 : Serial.println("Wakeup caused by external signal using RTC_IO"); break;
+
+case ESP_SLEEP_WAKEUP_EXT1 : Serial.println("Wakeup caused by external signal using RTC_CNTL"); break;
+
+case ESP_SLEEP_WAKEUP_TIMER : Serial.println("Wakeup caused by timer"); break;
+
+case ESP_SLEEP_WAKEUP_TOUCHPAD : Serial.println("Wakeup caused by touchpad"); break;
+
+case ESP_SLEEP_WAKEUP_ULP : Serial.println("Wakeup caused by ULP program"); break;
+
+default : Serial.printf("Wakeup was not caused by deep sleep: %d\n",wakeup_reason); break;
+
+}}void setup(){
+
+Serial.begin(115200);
+
+delay(1000); // Take some time to open up the Serial Monitor
+
+
+
+// Increment boot number and print it every reboot
+
+++bootCount;
+
+Serial.println("Boot number: " + String(bootCount));
+
+
+
+// Print the wakeup reason for ESP32
+
+print_wakeup_reason();
+
+
+
+// First we configure the wake up source We set our ESP32 to wake up every 5 seconds
+
+esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
+
+Serial.println("Setup ESP32 to sleep for every " + String(TIME_TO_SLEEP) +
+
+" Seconds");
+
+
+
+/*
+
+Next we decide what all peripherals to shut down/keep on
+
+By default, ESP32 will automatically power down the peripherals
+
+not needed by the wakeup source, but if you want to be a poweruser
+
+this is for you. Read in detail at the API docs
+
+http://esp-idf.readthedocs.io/en/latest/api-reference/system/deep_sleep.html
+
+Left the line commented as an example of how to configure peripherals.
+
+The line below turns off all RTC peripherals in deep sleep.
+
+*/
+
+//esp_deep_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_OFF);
+
+//Serial.println("Configured all RTC Peripherals to be powered down in sleep");
+
+
+
+// Now that we have setup a wake cause and if needed setup the peripherals state in deep sleep, we can now start going to deep sleep.
+
+// In the case that no wake up sources were provided but deep sleep was started, it will sleep forever unless hardware reset occurs.
+
+Serial.println("Going to sleep now");
+
+delay(1000);
+
+Serial.flush();
+
+esp_deep_sleep_start();
+
+Serial.println("This will never be printed");}void loop(){
+
+// This is not going to be called}
+
+View raw code
+
+Let’s take a look at this code. The first comment describes what is powered off during deep sleep with timer wake up.
+
+In this mode CPUs, most of the RAM,
+
+and all the digital peripherals which are clocked
+
+from APB_CLK are powered off. The only parts of
+
+the chip which can still be powered on are:
+
+RTC controller, RTC peripherals ,and RTC memories
+
+When you use timer wake-up, the parts that will be powered on are RTC controller, RTC peripherals, and RTC memories.
+
+Define the Sleep Time
+
+These first two lines of code define the period of time the ESP32 will be sleeping.
+
+#define uS_TO_S_FACTOR 1000000ULL /* Conversion factor for micro seconds to seconds */#define TIME_TO_SLEEP 5 /* Time ESP32 will go to sleep (in seconds) */
+
+This example uses a conversion factor from microseconds to seconds, so that you can set the sleep time in the TIME_TO_SLEEP variable in seconds. In this case, the example will put the ESP32 into deep sleep mode for 5 seconds.
+
+Save Data on RTC Memories
+
+With the ESP32, you can save data on the RTC memories. The ESP32 has 8kB SRAM on the RTC part, called RTC fast memory. The data saved here is not erased during deep sleep. However, it is erased when you press the reset button (the button labeled EN on the ESP32 board).
+
+To save data on the RTC memory, you just have to add RTC_DATA_ATTR before a variable definition. The example saves the bootCount variable on the RTC memory. This variable will count how many times the ESP32 has woken up from deep sleep.
+
+RTC_DATA_ATTR int bootCount = 0;
+
+Wake Up Reason
+
+Then, the code defines the print_wakeup_reason() function, that prints the source that caused the wake-up from deep sleep.
+
+void print_wakeup_reason() {
+
+esp_sleep_wakeup_cause_t wakeup_reason;
+
+
+
+wakeup_reason = esp_sleep_get_wakeup_cause();
+
+
+
+switch (wakeup_reason) {
+
+case ESP_SLEEP_WAKEUP_EXT0: Serial.println("Wakeup caused by external signal using RTC_IO"); break;
+
+case ESP_SLEEP_WAKEUP_EXT1: Serial.println("Wakeup caused by external signal using RTC_CNTL"); break;
+
+case ESP_SLEEP_WAKEUP_TIMER: Serial.println("Wakeup caused by timer"); break;
+
+case ESP_SLEEP_WAKEUP_TOUCHPAD: Serial.println("Wakeup caused by touchpad"); break;
+
+case ESP_SLEEP_WAKEUP_ULP: Serial.println("Wakeup caused by ULP program"); break;
+
+default: Serial.printf("Wakeup was not caused by deep sleep: %d\n", wakeup_reason); break;
+
+}}
+
+The setup()
+
+In the setup() is where you should put your code. You need to write all the instructions before calling the esp_deep_sleep_start() function.
+
+This example starts by initializing the serial communication at a baud rate of 115200.
+
+Serial.begin(115200);
+
+Then, the bootCount variable is increased by one in every reboot, and that number is printed in the serial monitor.
+
+++bootCount;
+
+Serial.println("Boot number: " + String(bootCount));
+
+Then, the code calls the print_wakeup_reason() function, but you can call any function you want to perform a desired task. For example, you may want to wake up your ESP32 once a day to read a value from a sensor.
+
+Next, the code defines the wake-up source by using the following function:
+
+esp_sleep_enable_timer_wakeup(time_in_us)
+
+This function accepts as argument the time to sleep in microseconds as we’ve seen previously. In our case, we have the following:
+
+esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
+
+Then, after all the tasks are performed, the ESP32 goes to sleep by calling the following function:
+
+esp_deep_sleep_start()
+
+As soon as you call the esp_deep_sleep_start() function, the ESP32 will go to sleep and will not run any code written after this function. When it wakes up from deep sleep, it will run the code from the beginning.
+
+loop()
+
+The loop() section is empty because the ESP32 will sleep before reaching this part of the code. So, you need to write all your tasks in the setup() before calling the esp_deep_sleep_start() function.
+
+Testing the Timer Wake Up
+
+Upload the example sketch to your ESP32. Make sure you have the right board and COM port selected. Open the Serial Monitor at a baud rate of 115200.
+
+define mit timer intergiere 
+
+
